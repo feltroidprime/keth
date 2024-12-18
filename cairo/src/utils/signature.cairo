@@ -1,4 +1,11 @@
-from starkware.cairo.common.cairo_builtins import BitwiseBuiltin, KeccakBuiltin
+from starkware.cairo.common.cairo_builtins import (
+    BitwiseBuiltin,
+    KeccakBuiltin,
+    ModBuiltin,
+    UInt384,
+    PoseidonBuiltin,
+)
+from starkware.cairo.common.registers import get_fp_and_pc, get_label_location
 from starkware.cairo.common.cairo_secp.bigint3 import BigInt3
 from starkware.cairo.common.cairo_secp.ec_point import EcPoint
 from starkware.cairo.common.cairo_secp.signature import (
@@ -7,6 +14,8 @@ from starkware.cairo.common.cairo_secp.signature import (
     get_generator_point,
     div_mod_n,
 )
+from ethereum.utils.numeric import divmod
+
 from starkware.cairo.common.math_cmp import RC_BOUND
 from starkware.cairo.common.cairo_secp.bigint import bigint_to_uint256, uint256_to_bigint
 from starkware.cairo.common.builtin_keccak.keccak import keccak_uint256s_bigend
@@ -16,6 +25,11 @@ from starkware.cairo.common.alloc import alloc
 from src.utils.maths import unsigned_div_rem
 
 from src.interfaces.interfaces import ICairo1Helpers
+
+struct G1Point {
+    x: UInt384,
+    y: UInt384,
+}
 
 namespace secp256k1 {
     const CURVE_ID = 2;
@@ -45,6 +59,11 @@ namespace secp256k1 {
     const MIN_ONE_D3 = 0x0;
 }
 
+const POW_2_32 = 2 ** 32;
+const POW_2_64 = 2 ** 64;
+const POW_2_96 = 2 ** 96;
+
+const N_LIMBS = 4;
 // Input must be a valid Uint256.
 func uint256_to_uint384{range_check_ptr}(a: Uint256) -> (res: UInt384) {
     let (high_64_high, high_64_low) = divmod(a.high, POW_2_64);
@@ -86,7 +105,6 @@ func try_get_point_from_x_secp256k1{
     let (constants_ptr: felt*) = get_label_location(constants_ptr_loc);
     let (add_offsets_ptr: felt*) = get_label_location(add_offsets_ptr_loc);
     let (mul_offsets_ptr: felt*) = get_label_location(mul_offsets_ptr_loc);
-    let (output_offsets_ptr: felt*) = get_label_location(output_offsets_ptr_loc);
     let constants_ptr_len = 2;
     let input_len = 24;
     let add_mod_n = 5;
@@ -123,15 +141,21 @@ func try_get_point_from_x_secp256k1{
     }
 
     assert add_mod_ptr[0] = ModBuiltin(
-        p=p, values_ptr=input, offsets_ptr=add_offsets_ptr, n=add_mod_n
+        p=P, values_ptr=input, offsets_ptr=add_offsets_ptr, n=add_mod_n
     );
     assert mul_mod_ptr[0] = ModBuiltin(
-        p=p, values_ptr=input, offsets_ptr=mul_offsets_ptr, n=mul_mod_n
+        p=P, values_ptr=input, offsets_ptr=mul_offsets_ptr, n=mul_mod_n
     );
 
     tempvar range_check96_ptr = range_check96_ptr + input_len + (
         constants_ptr_len + add_mod_n + mul_mod_n - n_assert_eq
     ) * N_LIMBS;
+
+    if (rhs_from_x_is_a_square_residue != 0) {
+        return (is_on_curve=1);
+    } else {
+        return (is_on_curve=0);
+    }
 
     constants_ptr_loc:
     dw 1;
