@@ -11,7 +11,6 @@ from starkware.cairo.common.cairo_secp.ec_point import EcPoint
 from starkware.cairo.common.cairo_secp.signature import (
     validate_signature_entry,
     try_get_point_from_x,
-    get_generator_point,
     div_mod_n,
 )
 from ethereum.utils.numeric import divmod
@@ -25,6 +24,7 @@ from starkware.cairo.common.alloc import alloc
 from src.utils.maths import unsigned_div_rem
 
 from src.interfaces.interfaces import ICairo1Helpers
+from src.utils.basic_circuit import div_mod_p
 
 struct G1Point {
     x: UInt384,
@@ -64,6 +64,25 @@ const POW_2_64 = 2 ** 64;
 const POW_2_96 = 2 ** 96;
 
 const N_LIMBS = 4;
+
+@known_ap_change
+func get_generator_point() -> (point: G1Point) {
+    // generator_point = (
+    //     0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798,
+    //     0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8
+    // ).
+    return (
+        point=G1Point(
+            x=UInt384(
+                0x2dce28d959f2815b16f81798, 0x55a06295ce870b07029bfcdb, 0x79be667ef9dcbbac, 0x0
+            ),
+            y=UInt384(
+                0xa68554199c47d08ffb10d4b8, 0x5da4fbfc0e1108a8fd17b448, 0x483ada7726a3c465, 0x0
+            ),
+        ),
+    );
+}
+
 // Input must be a valid Uint256.
 func uint256_to_uint384{range_check_ptr}(a: Uint256) -> (res: UInt384) {
     let (high_64_high, high_64_low) = divmod(a.high, POW_2_64);
@@ -72,19 +91,22 @@ func uint256_to_uint384{range_check_ptr}(a: Uint256) -> (res: UInt384) {
 }
 
 // Assume the input is valid UInt384 (will be the case if coming from ModuloBuiltin)
-func uint384_to_uint256_mod_secp256k1{range_check_ptr}(a: UInt384) -> (res: Uint256) {
+func uint384_to_uint256_mod_p{range_check_ptr}(a: UInt384, p: UInt384) -> (res: Uint256) {
     // First force the prover to have filled a fully reduced field element < P.
     assert a.d3 = 0;
-    assert [range_check_ptr] = secp256k1.P2 - a.d2;  // a.d2 <= secp256k1.P2
+    assert [range_check_ptr] = p.d2 - a.d2;  // a.d2 <= p.d2
     tempvar range_check_ptr = range_check_ptr + 1;
 
-    if (a.d2 == secp256k1.P2) {
-        if (a.d1 == secp256k1.P1) {
-            assert [range_check_ptr] = secp256k1.P0 - 1 - a.d0;
+    if (a.d2 == p.d2) {
+        if (a.d1 == p.d1) {
+            assert [range_check_ptr] = p.d0 - 1 - a.d0;
+            tempvar range_check_ptr = range_check_ptr + 1;
+        } else {
+            assert [range_check_ptr] = p.d1 - 1 - a.d1;
             tempvar range_check_ptr = range_check_ptr + 1;
         }
-        assert [range_check_ptr] = secp256k1.P1 - 1 - a.d1;
-        tempvar range_check_ptr = range_check_ptr + 1;
+    } else {
+        tempvar range_check_ptr = range_check_ptr;
     }
     // Then decompose and rebuild uint256
     let (d1_high_64, d1_low_32) = divmod(a.d1, 2 ** 32);
@@ -98,7 +120,7 @@ func try_get_point_from_x_secp256k1{
     add_mod_ptr: ModBuiltin*,
     mul_mod_ptr: ModBuiltin*,
     poseidon_ptr: PoseidonBuiltin*,
-}(x: Uint256, v: felt, res: G1Point*) -> (is_on_curve: felt) {
+}(x: UInt384, v: felt, result: G1Point*) -> (is_on_curve: felt) {
     alloc_locals;
 
     let (__fp__, _) = get_fp_and_pc();
@@ -121,15 +143,14 @@ func try_get_point_from_x_secp256k1{
         rhs = (ids.entropy**3 + a*ids.entropy + b) % p
         ids.rhs_from_x_is_a_square_residue = is_quad_residue(rhs, p)
     %}
-    let (x_384: UInt384) = uint256_to_uint384(x);
 
-    let (P: UInt384) = UInt384(secp256k1.P0, secp256k1.P1, secp256k1.P2, secp256k1.P3);
+    let P: UInt384 = UInt384(secp256k1.P0, secp256k1.P1, secp256k1.P2, secp256k1.P3);
 
-    let (input: UInt384*) = cast(range_check96_ptr, UInt384*);
+    let input: UInt384* = cast(range_check96_ptr, UInt384*);
 
     assert input[0] = UInt384(1, 0, 0, 0);
     assert input[1] = UInt384(0, 0, 0, 0);
-    assert input[2] = x_384;
+    assert input[2] = x;
     assert input[3] = UInt384(secp256k1.A0, secp256k1.A1, secp256k1.A2, secp256k1.A3);
     assert input[4] = UInt384(secp256k1.B0, secp256k1.B1, secp256k1.B2, secp256k1.B3);
     assert input[5] = UInt384(secp256k1.G0, secp256k1.G1, secp256k1.G2, secp256k1.G3);
@@ -214,14 +235,15 @@ namespace Signature {
         range_check_ptr, bitwise_ptr: BitwiseBuiltin*, keccak_ptr: KeccakBuiltin*
     }(msg_hash: Uint256, r: Uint256, s: Uint256, y_parity: felt, eth_address: felt) {
         alloc_locals;
-        let (msg_hash_bigint: BigInt3) = uint256_to_bigint(msg_hash);
-        let (r_bigint: BigInt3) = uint256_to_bigint(r);
-        let (s_bigint: BigInt3) = uint256_to_bigint(s);
+        let (msg_hash_uint384: UInt384) = uint256_to_uint384(msg_hash);
+        let (r_uint384: UInt384) = uint256_to_uint384(r);
+        let (s_uint384: UInt384) = uint256_to_uint384(s);
 
-        with_attr error_message("Signature out of range.") {
-            validate_signature_entry(r_bigint);
-            validate_signature_entry(s_bigint);
-        }
+        // Todo :fix with UInt384
+        // with_attr error_message("Signature out of range.") {
+        //     validate_signature_entry(r_uint384);
+        //     validate_signature_entry(s_uint384);
+        // }
 
         with_attr error_message("Invalid y_parity") {
             assert (1 - y_parity) * y_parity = 0;
@@ -229,7 +251,7 @@ namespace Signature {
 
         with_attr error_message("Invalid signature.") {
             let (success, recovered_address) = try_recover_eth_address(
-                msg_hash=msg_hash_bigint, r=r_bigint, s=s_bigint, y_parity=y_parity
+                msg_hash=msg_hash_uint384, r=r_uint384, s=s_uint384, y_parity=y_parity
             );
             assert success = 1;
         }
@@ -250,22 +272,35 @@ namespace Signature {
     // @dev * r is the x coordinate of some nonzero point on the curve.
     // @dev * All the limbs of s and msg_hash are in the range (-2 ** 210.99, 2 ** 210.99).
     // @dev * All the limbs of r are in the range (-2 ** 124.99, 2 ** 124.99).
-    func try_recover_public_key{range_check_ptr}(
-        msg_hash: BigInt3, r: BigInt3, s: BigInt3, y_parity: felt
-    ) -> (public_key_point: EcPoint, success: felt) {
+    func try_recover_public_key{
+        range_check_ptr,
+        range_check96_ptr: felt*,
+        add_mod_ptr: ModBuiltin*,
+        mul_mod_ptr: ModBuiltin*,
+        poseidon_ptr: PoseidonBuiltin*,
+    }(msg_hash: UInt384, r: UInt384, s: UInt384, y_parity: felt) -> (
+        public_key_point: G1Point, success: felt
+    ) {
         alloc_locals;
-        let (local r_point: EcPoint*) = alloc();
-        let (is_on_curve) = try_get_point_from_x(x=r, v=y_parity, result=r_point);
+        let (local r_point: G1Point*) = alloc();
+        let (is_on_curve) = try_get_point_from_x_secp256k1(x=r, v=y_parity, result=r_point);
         if (is_on_curve == 0) {
-            return (public_key_point=EcPoint(x=BigInt3(0, 0, 0), y=BigInt3(0, 0, 0)), success=0);
+            return (
+                public_key_point=G1Point(x=UInt384(0, 0, 0, 0), y=UInt384(0, 0, 0, 0)), success=0
+            );
         }
-        let (generator_point: EcPoint) = get_generator_point();
+        let (generator_point: G1Point) = get_generator_point();
         // The result is given by
         //   -(msg_hash / r) * gen + (s / r) * r_point
         // where the division by r is modulo N.
 
-        let (u1: BigInt3) = div_mod_n(msg_hash, r);
-        let (u2: BigInt3) = div_mod_n(s, r);
+        let N = UInt384(secp256k1.N0, secp256k1.N1, secp256k1.N2, secp256k1.N3);
+
+        let (_u1: UInt384) = div_mod_p(msg_hash, r, N);
+        let (_u2: UInt384) = div_mod_p(s, r, N);
+
+        let u1 = uint384_to_uint256_mod_p(_u1, N);
+        let u2 = uint384_to_uint256_mod_p(_u2, N);
 
         let (point1) = ec_mul(generator_point, u1);
         // We prefer negating the point over negating the scalar because negating mod SECP_P is
@@ -288,7 +323,7 @@ namespace Signature {
     // @return The Ethereum address.
     func try_recover_eth_address{
         range_check_ptr, bitwise_ptr: BitwiseBuiltin*, keccak_ptr: KeccakBuiltin*
-    }(msg_hash: BigInt3, r: BigInt3, s: BigInt3, y_parity: felt) -> (success: felt, address: felt) {
+    }(msg_hash: UInt384, r: UInt384, s: UInt384, y_parity: felt) -> (success: felt, address: felt) {
         alloc_locals;
         let (public_key_point, success) = try_recover_public_key(
             msg_hash=msg_hash, r=r, s=s, y_parity=y_parity
