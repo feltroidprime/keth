@@ -21,9 +21,9 @@ func u512_mod_p{range_check96_ptr: felt*, add_mod_ptr: ModBuiltin*, mul_mod_ptr:
     let mul_offsets_ptr = pc + (mul_offsets - pc_labelx);
 
     // High limbs.
-    assert [range_check96_ptr] = high.v7 + high.v6 * POW_2_32_252 + high.v5 * POW_2_64_252;
-    assert [range_check96_ptr + 1] = high.v4 + high.v3 * POW_2_32_252 + high.v2 * POW_2_64_252;
-    assert [range_check96_ptr + 2] = high.v1 + high.v0 * POW_2_32_252;
+    assert [range_check96_ptr] = high.v7 + high.v6 * POW_2_32 + high.v5 * POW_2_64;
+    assert [range_check96_ptr + 1] = high.v4 + high.v3 * POW_2_32 + high.v2 * POW_2_64;
+    assert [range_check96_ptr + 2] = high.v1 + high.v0 * POW_2_32;
     assert [range_check96_ptr + 3] = 0;
 
     // Shift Limbs.
@@ -33,9 +33,9 @@ func u512_mod_p{range_check96_ptr: felt*, add_mod_ptr: ModBuiltin*, mul_mod_ptr:
     assert [range_check96_ptr + 7] = 0;
 
     // Low limbs.
-    assert [range_check96_ptr + 8] = low.v7 + low.v6 * POW_2_32_252 + low.v5 * POW_2_64_252;
-    assert [range_check96_ptr + 9] = low.v4 + low.v3 * POW_2_32_252 + low.v2 * POW_2_64_252;
-    assert [range_check96_ptr + 10] = low.v1 + low.v0 * POW_2_32_252;
+    assert [range_check96_ptr + 8] = low.v7 + low.v6 * POW_2_32 + low.v5 * POW_2_64;
+    assert [range_check96_ptr + 9] = low.v4 + low.v3 * POW_2_32 + low.v2 * POW_2_64;
+    assert [range_check96_ptr + 10] = low.v1 + low.v0 * POW_2_32;
     assert [range_check96_ptr + 11] = 0;
 
     assert add_mod_ptr[0] = ModBuiltin(
@@ -163,6 +163,53 @@ func sub_mod_p{range_check96_ptr: felt*, add_mod_ptr: ModBuiltin*}(
     dw 4;  // Y
     dw 8;  // X-Y
     dw 0;
+}
+
+// Compute X / Y mod p.
+func div_mod_p{range_check96_ptr: felt*, mul_mod_ptr: ModBuiltin*}(
+    x: UInt384, y: UInt384, p: UInt384
+) -> (x_div_y: UInt384) {
+    let (_, pc) = get_fp_and_pc();
+
+    pc_labelx:
+    let mul_offsets_ptr = pc + (mul_offsets - pc_labelx);
+
+    // X limbs (offset 0)
+    assert [range_check96_ptr] = x.d0;
+    assert [range_check96_ptr + 1] = x.d1;
+    assert [range_check96_ptr + 2] = x.d2;
+    assert [range_check96_ptr + 3] = x.d3;
+    // Y limbs (offset 4)
+    assert [range_check96_ptr + 4] = y.d0;
+    assert [range_check96_ptr + 5] = y.d1;
+    assert [range_check96_ptr + 6] = y.d2;
+    assert [range_check96_ptr + 7] = y.d3;
+
+    assert mul_mod_ptr[0] = ModBuiltin(
+        p=p, values_ptr=cast(range_check96_ptr, UInt384*), offsets_ptr=mul_offsets_ptr, n=1
+    );
+    %{
+        from starkware.cairo.lang.builtins.modulo.mod_builtin_runner import ModBuiltinRunner
+        assert builtin_runners["mul_mod_builtin"].instance_def.batch_size == 1
+
+        ModBuiltinRunner.fill_memory(
+            memory=memory,
+            add_mod=None,
+            mul_mod=(ids.mul_mod_ptr.address_, builtin_runners["mul_mod_builtin"], 1),
+        )
+    %}
+
+    let range_check96_ptr = range_check96_ptr + 12;
+    let mul_mod_ptr = mul_mod_ptr + ModBuiltin.SIZE;
+    return (x_div_y=[cast(range_check96_ptr - 4, UInt384*)]);
+
+    mul_offsets:
+    // Instruction : assert 4  8 == 0
+    // 8 is unallocated, so the assert is Y * ?  == X
+    // => ? == X / Y, at offset 8.
+    dw 4;  // Y
+    dw 8;  // X/Y
+    dw 0;  // X
 }
 
 // Assert X == 0 mod p.
