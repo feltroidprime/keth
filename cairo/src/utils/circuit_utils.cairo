@@ -186,11 +186,11 @@ func scalar_to_epns{range_check_ptr}(scalar: felt) -> (
     let sum_p = [ap - 4];
     assert pow3 = (-3) ** 82;  //
 
-    %{
-        from starkware.cairo.common.math_utils import as_int
-        print(f"{as_int(ids.sum_p, PRIME)=}")
-        print(f"{as_int(ids.sum_n, PRIME)=}")
-    %}
+    // %{
+    //     from starkware.cairo.common.math_utils import as_int
+    //     print(f"{as_int(ids.sum_p, PRIME)=}")
+    //     print(f"{as_int(ids.sum_n, PRIME)=}")
+    // %}
     assert scalar = sum_p - sum_n;
 
     let p_sign = sign(sum_p);
@@ -224,10 +224,9 @@ func felt_to_UInt384{range_check96_ptr: felt*}(x: felt) -> (res: UInt384) {
 }
 
 func run_modulo_circuit_basic{
-    range_check_96_ptr: felt*, add_mod_ptr: ModBuiltin*, mul_mod_ptr: ModBuiltin*
+    range_check96_ptr: felt*, add_mod_ptr: ModBuiltin*, mul_mod_ptr: ModBuiltin*
 }(
     p: UInt384,
-    values_ptr: UInt384*,
     add_offsets_ptr: felt*,
     add_n: felt,
     mul_offsets_ptr: felt*,
@@ -236,11 +235,11 @@ func run_modulo_circuit_basic{
     n_assert_eq: felt,
 ) {
     assert add_mod_ptr[0] = ModBuiltin(
-        p=p, values_ptr=values_ptr, offsets_ptr=add_offsets_ptr, n=add_n
+        p=p, values_ptr=cast(range_check96_ptr, UInt384*), offsets_ptr=add_offsets_ptr, n=add_n
     );
 
     assert mul_mod_ptr[0] = ModBuiltin(
-        p=p, values_ptr=values_ptr, offsets_ptr=mul_offsets_ptr, n=mul_n
+        p=p, values_ptr=cast(range_check96_ptr, UInt384*), offsets_ptr=mul_offsets_ptr, n=mul_n
     );
 
     %{
@@ -255,8 +254,7 @@ func run_modulo_circuit_basic{
         )
     %}
 
-    let range_check_96_ptr = range_check_96_ptr + (input_len + add_n + mul_n - n_assert_eq) *
-        N_LIMBS;
+    let range_check96_ptr = range_check96_ptr + (input_len + add_n + mul_n - n_assert_eq) * N_LIMBS;
     let add_mod_ptr = &add_mod_ptr[add_n];
     let mul_mod_ptr = &mul_mod_ptr[mul_n];
     return ();

@@ -1,6 +1,6 @@
 from starkware.cairo.common.registers import get_fp_and_pc, get_label_location
 
-func get_ADD_EC_POINT_circuit(curve_id: felt) -> (add_offsets: felt*, mul_offsets: felt*) {
+func get_ADD_EC_POINT_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     alloc_locals;
     // let (__fp__, _) = get_fp_and_pc();
     // let (constants_ptr: felt*) = get_label_location(constants_ptr_loc);
@@ -36,6 +36,8 @@ func get_ADD_EC_POINT_circuit(curve_id: felt) -> (add_offsets: felt*, mul_offset
     // return (&circuit,);
 
     // constants_ptr_loc:
+
+    return (add_offsets_ptr, mul_offsets_ptr);
 
     add_offsets_ptr_loc:
     dw 12;  // None
@@ -113,6 +115,8 @@ func get_DOUBLE_EC_POINT_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     // dw 0;
     // dw 0;
     // dw 0;
+
+    return (add_offsets_ptr, mul_offsets_ptr);
 
     add_offsets_ptr_loc:
     dw 20;  // None

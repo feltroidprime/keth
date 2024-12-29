@@ -27,7 +27,7 @@ class TestSignature:
             assert result == int(expected_address, 16)
 
     class TestVerifyEthSignature:
-        @pytest.mark.slow
+        # @pytest.mark.slow
         @settings(deadline=None)
         @given(private_key=..., message=...)
         def test__verify_eth_signature_uint256(
@@ -123,7 +123,7 @@ class TestSignature:
                 )
 
     class TestTryRecoverEthAddress:
-        @pytest.mark.slow
+        # @pytest.mark.slow
         @settings(deadline=None)
         @given(private_key=..., message=...)
         def test__try_recover_eth_address(

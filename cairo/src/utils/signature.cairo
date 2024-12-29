@@ -6,19 +6,10 @@ from starkware.cairo.common.cairo_builtins import (
     PoseidonBuiltin,
 )
 from starkware.cairo.common.registers import get_fp_and_pc, get_label_location
-// from starkware.cairo.common.cairo_secp.bigint3 import BigInt3
-// from starkware.cairo.common.cairo_secp.ec_point import EcPoint
-// from starkware.cairo.common.cairo_secp.signature import (
-//     validate_signature_entry,
-//     try_get_point_from_x,
-//     div_mod_n,
-// )
 from ethereum.utils.numeric import divmod
 
 from starkware.cairo.common.math_cmp import RC_BOUND
-// from starkware.cairo.common.cairo_secp.bigint import bigint_to_uint256, uint256_to_bigint
 from starkware.cairo.common.builtin_keccak.keccak import keccak_uint256s_bigend
-// from starkware.cairo.common.cairo_secp.ec import ec_add, ec_mul, ec_negate
 from starkware.cairo.common.uint256 import Uint256
 from starkware.cairo.common.alloc import alloc
 from src.utils.maths import unsigned_div_rem
@@ -53,6 +44,8 @@ namespace secp256k1 {
     const N0 = 0xaf48a03bbfd25e8cd0364141;
     const N1 = 0xfffffffffffffffebaaedce6;
     const N2 = 0xffffffffffffffff;
+    const N_LOW_128 = 0xbaaedce6af48a03bbfd25e8cd0364141;
+    const N_HIGH_128 = 0xfffffffffffffffffffffffffffffffe;
     const N3 = 0x0;
     const A0 = 0x0;
     const A1 = 0x0;
@@ -181,7 +174,6 @@ func try_get_point_from_x_secp256k1{
     alloc_locals;
 
     let (__fp__, _) = get_fp_and_pc();
-    let (constants_ptr: felt*) = get_label_location(constants_ptr_loc);
     let (add_offsets_ptr: felt*) = get_label_location(add_offsets_ptr_loc);
     let (mul_offsets_ptr: felt*) = get_label_location(mul_offsets_ptr_loc);
     let constants_ptr_len = 2;
@@ -195,11 +187,12 @@ func try_get_point_from_x_secp256k1{
     %{
         from starkware.python.math_utils import is_quad_residue
         from sympy import sqrt_mod
-        from garaga.definitions import CURVES
-        from garaga.hints.io import bigint_pack
-        a = CURVES[ids.curve_id].a
-        b = CURVES[ids.curve_id].b
-        p = CURVES[ids.curve_id].p
+        from garaga.definitions import CURVES, CurveID
+        from garaga.hints.io import bigint_pack, bigint_fill
+        curve_id = CurveID.SECP256K1.value
+        a = CURVES[curve_id].a
+        b = CURVES[curve_id].b
+        p = CURVES[curve_id].p
         x = bigint_pack(ids.x, 4, 2**96)
         rhs = (x**3 + a*x + b) % p
         ids.rhs_from_x_is_a_square_residue = is_quad_residue(rhs, p)
@@ -210,9 +203,9 @@ func try_get_point_from_x_secp256k1{
             else:
                 square_root = - square_root % p
         else:
-            square_root = sqrt_mod(rhs*CURVES[ids.curve_id].fp_generator, p)
+            square_root = sqrt_mod(rhs*CURVES[curve_id].fp_generator, p)
 
-        ids.y_try = bigint_fill(square_root, 4, 2**96)
+        bigint_fill(square_root, ids.y_try, 4, 2**96)
     %}
 
     let P: UInt384 = UInt384(secp256k1.P0, secp256k1.P1, secp256k1.P2, secp256k1.P3);
@@ -233,16 +226,9 @@ func try_get_point_from_x_secp256k1{
         assert input[7] = UInt384(0, 0, 0, 0);
     }
 
-    assert add_mod_ptr[0] = ModBuiltin(
-        p=P, values_ptr=input, offsets_ptr=add_offsets_ptr, n=add_mod_n
+    run_modulo_circuit_basic(
+        P, add_offsets_ptr, add_mod_n, mul_offsets_ptr, mul_mod_n, input_len, n_assert_eq
     );
-    assert mul_mod_ptr[0] = ModBuiltin(
-        p=P, values_ptr=input, offsets_ptr=mul_offsets_ptr, n=mul_mod_n
-    );
-
-    tempvar range_check96_ptr = range_check96_ptr + input_len + (
-        constants_ptr_len + add_mod_n + mul_mod_n - n_assert_eq
-    ) * N_LIMBS;
 
     if (rhs_from_x_is_a_square_residue != 0) {
         assert [result] = G1Point(x=x, y=y_try);
@@ -252,15 +238,15 @@ func try_get_point_from_x_secp256k1{
         return (is_on_curve=0);
     }
 
-    constants_ptr_loc:
-    dw 1;
-    dw 0;
-    dw 0;
-    dw 0;
-    dw 0;
-    dw 0;
-    dw 0;
-    dw 0;
+    // constants_ptr_loc:
+    // dw 1;
+    // dw 0;
+    // dw 0;
+    // dw 0;
+    // dw 0;
+    // dw 0;
+    // dw 0;
+    // dw 0;
 
     add_offsets_ptr_loc:
     dw 40;  // (ax)+b
@@ -305,6 +291,29 @@ func try_get_point_from_x_secp256k1{
 
 namespace Signature {
     // A version of verify_eth_signature that uses the keccak builtin.
+
+    // Assert 1 <= x < N. Assumes valid Uint256.
+    func validate_signature_entry{range_check_ptr}(x: Uint256) {
+        if (x.high == 0) {
+            if (x.low == 0) {
+                assert 1 = 0;
+                return ();
+            } else {
+                return ();
+            }
+        } else {
+            if (x.high == secp256k1.N_HIGH_128) {
+                assert [range_check_ptr] = secp256k1.N_LOW_128 - 1 - x.low;
+                tempvar range_check_ptr = range_check_ptr + 1;
+                return ();
+            } else {
+                assert [range_check_ptr] = secp256k1.N_HIGH_128 - 1 - x.high;
+                tempvar range_check_ptr = range_check_ptr + 1;
+                return ();
+            }
+        }
+    }
+
     func verify_eth_signature_uint256{
         range_check_ptr,
         range_check96_ptr: felt*,
@@ -316,14 +325,13 @@ namespace Signature {
     }(msg_hash: Uint256, r: Uint256, s: Uint256, y_parity: felt, eth_address: felt) {
         alloc_locals;
         let (msg_hash_uint384: UInt384) = uint256_to_uint384(msg_hash);
+        // Todo :fix with UInt384
+        with_attr error_message("Signature out of range.") {
+            validate_signature_entry(r);
+            validate_signature_entry(s);
+        }
         let (r_uint384: UInt384) = uint256_to_uint384(r);
         let (s_uint384: UInt384) = uint256_to_uint384(s);
-
-        // Todo :fix with UInt384
-        // with_attr error_message("Signature out of range.") {
-        //     validate_signature_entry(r_uint384);
-        //     validate_signature_entry(s_uint384);
-        // }
 
         with_attr error_message("Invalid y_parity") {
             assert (1 - y_parity) * y_parity = 0;
@@ -365,6 +373,7 @@ namespace Signature {
         let (local r_point: G1Point*) = alloc();
         let (is_on_curve) = try_get_point_from_x_secp256k1(x=r, v=y_parity, result=r_point);
         if (is_on_curve == 0) {
+            assert 1 = 0;
             return (
                 public_key_point=G1Point(x=UInt384(0, 0, 0, 0), y=UInt384(0, 0, 0, 0)), success=0
             );
@@ -383,21 +392,47 @@ namespace Signature {
         let (u1) = uint384_to_uint256_mod_p(_u1, N);
         let (u2) = uint384_to_uint256_mod_p(_u2, N);
 
+        let (ep1_low, en1_low, sp1_low, sn1_low) = scalar_to_epns(u1.low);
+        let (ep1_high, en1_high, sp1_high, sn1_high) = scalar_to_epns(u1.high);
+
+        let (ep1_low_384) = felt_to_UInt384(ep1_low);
+        let (en1_low_384) = felt_to_UInt384(en1_low);
+        let (sp1_low_384) = sign_to_UInt384_mod_secp256k1(sp1_low);
+        let (sn1_low_384) = sign_to_UInt384_mod_secp256k1(sn1_low);
+
+        let (ep1_high_384) = felt_to_UInt384(ep1_high);
+        let (en1_high_384) = felt_to_UInt384(en1_high);
+        let (sp1_high_384) = sign_to_UInt384_mod_secp256k1(sp1_high);
+        let (sn1_high_384) = sign_to_UInt384_mod_secp256k1(sn1_high);
+
+        let (ep2_low, en2_low, sp2_low, sn2_low) = scalar_to_epns(u2.low);
+
+        let (ep2_low_384) = felt_to_UInt384(ep2_low);
+        let (en2_low_384) = felt_to_UInt384(en2_low);
+        let (sp2_low_384) = sign_to_UInt384_mod_secp256k1(sp2_low);
+        let (sn2_low_384) = sign_to_UInt384_mod_secp256k1(sn2_low);
+
+        let (ep2_high, en2_high, sp2_high, sn2_high) = scalar_to_epns(u2.high);
+        let (ep2_high_384) = felt_to_UInt384(ep2_high);
+        let (en2_high_384) = felt_to_UInt384(en2_high);
+        let (sp2_high_384) = sign_to_UInt384_mod_secp256k1(sp2_high);
+        let (sn2_high_384) = sign_to_UInt384_mod_secp256k1(sn2_high);
+
         %{
-            from garaga.hints.io import pack_bigint_ptr, pack_felt_ptr, fill_sum_dlog_div, fill_g1_point
-            from garaga.starknet.tests_and_calldata_generators import MSMCalldataBuilder
+            from garaga.hints.io import pack_bigint_ptr, pack_felt_ptr, fill_sum_dlog_div, fill_g1_point, bigint_split
+            from garaga.starknet.tests_and_calldata_generators.msm import MSMCalldataBuilder
             from garaga.definitions import G1Point
             import time
-            curve_id = CurveID(ids.curve_id)
+            curve_id = CurveID.SECP256K1
             r_point = (bigint_pack(ids.r_point.x, 4, 2**96), bigint_pack(ids.r_point.y, 4, 2**96))
-            points = [G1Point.get_nG(CurveID.SECP256K1, 1), G1Point(r_point[0], r_point[1], CurveID.SECP256K1)]
+            points = [G1Point.get_nG(curve_id, 1), G1Point(r_point[0], r_point[1], curve_id)]
             scalars = [ids.u1.low + 2**128*ids.u1.high, ids.u2.low + 2**128*ids.u2.high]
-            builder = MSMCalldataBuilder(CurveID.SECP256K1, points, scalars)
+            builder = MSMCalldataBuilder(curve_id, points, scalars)
             (msm_hint, derive_point_from_x_hint) = builder.build_msm_hints()
-            Q_low, Q_high, Q_high_shifted, RLCSumDlogDiv = derive_point_from_x_hint.elmts
+            Q_low, Q_high, Q_high_shifted, RLCSumDlogDiv = msm_hint.elmts
 
             def fill_elmt_at_index(
-                x: int | PyFelt | ModuloCircuitElement, ptr: object, memory: object, index: int
+                x, ptr: object, memory: object, index: int
             ):
                 limbs = bigint_split(x, 4, 2**96)
                 for i in range(4):
@@ -406,7 +441,7 @@ namespace Signature {
 
 
             def fill_elmts_at_index(
-                x: list[int | PyFelt | ModuloCircuitElement],
+                x,
                 ptr: object,
                 memory: object,
                 index: int,
@@ -416,49 +451,19 @@ namespace Signature {
                 return
 
             rlc_sum_dlog_div_coeffs = RLCSumDlogDiv.a_num + RLCSumDlogDiv.a_den + RLCSumDlogDiv.b_num + RLCSumDlogDiv.b_den
-            assert len(rlc_sum_dlog_div_coeffs) == 18 + 4 + 18 + 4
+            assert len(rlc_sum_dlog_div_coeffs) == 18 + 4*2, f"len(rlc_sum_dlog_div_coeffs) == {len(rlc_sum_dlog_div_coeffs)} != {18 + 4*2}"
             fill_elmts_at_index(rlc_sum_dlog_div_coeffs, ids.range_check96_ptr, memory, 4)
 
-            fill_elmt_at_index(Q_low.x, ids.range_check96_ptr, memory, 50)
-            fill_elmt_at_index(Q_low.y, ids.range_check96_ptr, memory, 51)
-            fill_elmt_at_index(Q_high.x, ids.range_check96_ptr, memory, 52)
-            fill_elmt_at_index(Q_high.y, ids.range_check96_ptr, memory, 53)
-            fill_elmt_at_index(Q_high_shifted.x, ids.range_check96_ptr, memory, 54)
-            fill_elmt_at_index(Q_high_shifted.y, ids.range_check96_ptr, memory, 55)
+            fill_elmt_at_index(Q_low[0], ids.range_check96_ptr, memory, 50)
+            fill_elmt_at_index(Q_low[1], ids.range_check96_ptr, memory, 51)
+            fill_elmt_at_index(Q_high[0], ids.range_check96_ptr, memory, 52)
+            fill_elmt_at_index(Q_high[1], ids.range_check96_ptr, memory, 53)
+            fill_elmt_at_index(Q_high_shifted[0], ids.range_check96_ptr, memory, 54)
+            fill_elmt_at_index(Q_high_shifted[1], ids.range_check96_ptr, memory, 55)
 
 
             print(f"Hashing Z = Poseidon(Input, Commitments) = Hash(Points, scalars, Q_low, Q_high, Q_high_shifted, SumDlogDivLow, SumDlogDivHigh, SumDlogDivShifted)...")
         %}
-
-        // def build_input(self) -> list[PyFelt]:
-        //     input = []
-        //     n_coeffs = self._n_coeffs_from_n_points(self.n_points)
-
-        // # RLCSumDlogDiv
-        //     for _ in range(sum(n_coeffs)):
-        //         input.append(self.field.random())
-
-        // for _ in range(self.n_points):
-        //         input.append(self.field.random())  # x
-        //         input.append(self.field.random())  # y
-        //         input.append(self.field.random())  # ep_low
-        //         input.append(self.field.random())  # en_low
-        //         input.append(self.field.random())  # sp_low
-        //         input.append(self.field.random())  # sn_low
-        //         input.append(self.field.random())  # ep_high
-        //         input.append(self.field.random())  # en_high
-        //         input.append(self.field.random())  # sp_high
-        //         input.append(self.field.random())  # sn_high
-
-        // # Q_low/high/high_shifted + A0
-        //     for i in range(4):
-        //         input.append(self.field.random())  # x
-        //         input.append(self.field.random())  # y
-
-        // input.append(self.field(CURVES[self.curve_id].a))  # A_weirstrass
-        //     input.append(self.field.random())  # base_rlc.
-
-        // return input
 
         let ecip_input: UInt384* = cast(range_check96_ptr, UInt384*);
 
@@ -478,23 +483,10 @@ namespace Signature {
             0xa68554199c47d08ffb10d4b8, 0x5da4fbfc0e1108a8fd17b448, 0x483ada7726a3c465, 0x0
         );  // y_gen
 
-        let (ep1_low, en1_low, sp1_low, sn1_low) = scalar_to_epns(u1.low);
-        let (ep1_high, en1_high, sp1_high, sn1_high) = scalar_to_epns(u1.high);
-
-        let (ep1_low_384) = felt_to_UInt384(ep1_low);
-        let (en1_low_384) = felt_to_UInt384(en1_low);
-        let (sp1_low_384) = sign_to_UInt384_mod_secp256k1(sp1_low);
-        let (sn1_low_384) = sign_to_UInt384_mod_secp256k1(sn1_low);
-
         assert ecip_input[32] = ep1_low_384;
         assert ecip_input[33] = en1_low_384;
         assert ecip_input[34] = sp1_low_384;
         assert ecip_input[35] = sn1_low_384;
-
-        let (ep1_high_384) = felt_to_UInt384(ep1_high);
-        let (en1_high_384) = felt_to_UInt384(en1_high);
-        let (sp1_high_384) = sign_to_UInt384_mod_secp256k1(sp1_high);
-        let (sn1_high_384) = sign_to_UInt384_mod_secp256k1(sn1_high);
 
         assert ecip_input[36] = ep1_high_384;
         assert ecip_input[37] = en1_high_384;
@@ -505,23 +497,10 @@ namespace Signature {
         assert ecip_input[40] = r_point.x;
         assert ecip_input[41] = r_point.y;
 
-        let (ep2, en2, sp2, sn2) = scalar_to_epns(u2.low);
-
-        let (ep2_low_384) = felt_to_UInt384(ep2);
-        let (en2_low_384) = felt_to_UInt384(en2);
-        let (sp2_low_384) = sign_to_UInt384_mod_secp256k1(sp2);
-        let (sn2_low_384) = sign_to_UInt384_mod_secp256k1(sn2);
-
         assert ecip_input[42] = ep2_low_384;
         assert ecip_input[43] = en2_low_384;
         assert ecip_input[44] = sp2_low_384;
         assert ecip_input[45] = sn2_low_384;
-
-        let (ep2_high, en2_high, sp2_high, sn2_high) = scalar_to_epns(u2.high);
-        let (ep2_high_384) = felt_to_UInt384(ep2_high);
-        let (en2_high_384) = felt_to_UInt384(en2_high);
-        let (sp2_high_384) = sign_to_UInt384_mod_secp256k1(sp2_high);
-        let (sn2_high_384) = sign_to_UInt384_mod_secp256k1(sn2_high);
 
         assert ecip_input[46] = ep2_high_384;
         assert ecip_input[47] = en2_high_384;
@@ -532,7 +511,7 @@ namespace Signature {
         // ...
         // Random point A0
 
-        assert ecip_input[56] = UInt384(0, 0, 0, 0);
+        assert ecip_input[56] = UInt384(1, 0, 0, 0);
         assert ecip_input[57] = UInt384(0, 0, 0, 0);
 
         // a_weirstrass
@@ -541,11 +520,8 @@ namespace Signature {
         assert ecip_input[59] = UInt384(2, 0, 0, 0);
 
         // let (point1) = ec_mul(generator_point, u1);
-
         // let (minus_point1) = ec_negate(point1);
-
         // let (point2) = ec_mul([r_point], u2);
-
         // let (public_key_point) = ec_add(minus_point1, point2);
         // return (public_key_point=public_key_point, success=1);
 
@@ -573,9 +549,13 @@ namespace Signature {
         %}
 
         tempvar range_check96_ptr = range_check96_ptr + 224 + (4 + 117 + 108 - 1) * N_LIMBS;
-        let add_mod_ptr = add_mod_ptr + ModBuiltin.SIZE;
-        let mul_mod_ptr = mul_mod_ptr + ModBuiltin.SIZE;
-        return (public_key_point=[cast(range_check96_ptr - 4, G1Point*)], success=1);
+        let add_mod_ptr = add_mod_ptr + 117 * ModBuiltin.SIZE;
+        let mul_mod_ptr = mul_mod_ptr + 108 * ModBuiltin.SIZE;
+        // Add Q_low and Q_high_shifted:
+        let (res) = add_ec_points_secp256k1(
+            G1Point(x=ecip_input[50], y=ecip_input[51]), G1Point(x=ecip_input[54], y=ecip_input[55])
+        );
+        return (public_key_point=res, success=1);
     }
 
     // @notice Recovers the Ethereum address from a signature.
@@ -600,6 +580,7 @@ namespace Signature {
             msg_hash=msg_hash, r=r, s=s, y_parity=y_parity
         );
         if (success == 0) {
+            assert 1 = 0;
             return (success=0, address=0);
         }
         let modulus = UInt384(secp256k1.P0, secp256k1.P1, secp256k1.P2, secp256k1.P3);
@@ -649,14 +630,13 @@ func add_ec_points_secp256k1{
         } else {
             // P = Q, so we need to double the point
             let (add_offsets, mul_offsets) = get_DOUBLE_EC_POINT_circuit();
-            let (input: UInt384*) = cast(range_check96_ptr, UInt384*);
+            let input: UInt384* = cast(range_check96_ptr, UInt384*);
             assert input[0] = P.x;
             assert input[1] = P.y;
             assert input[2] = UInt384(secp256k1.A0, secp256k1.A1, secp256k1.A2, secp256k1.A3);
 
             run_modulo_circuit_basic(
                 p=modulus,
-                values_ptr=cast(range_check96_ptr, UInt384*),
                 add_offsets_ptr=add_offsets,
                 add_n=6,
                 mul_offsets_ptr=mul_offsets,
@@ -674,7 +654,7 @@ func add_ec_points_secp256k1{
     } else {
         // P and Q have different x-coordinates, perform regular addition
         let (add_offsets, mul_offsets) = get_ADD_EC_POINT_circuit();
-        let (input: UInt384*) = cast(range_check96_ptr, UInt384*);
+        let input: UInt384* = cast(range_check96_ptr, UInt384*);
         assert input[0] = P.x;
         assert input[1] = P.y;
         assert input[2] = Q.x;
@@ -682,7 +662,6 @@ func add_ec_points_secp256k1{
 
         run_modulo_circuit_basic(
             p=modulus,
-            values_ptr=cast(range_check96_ptr, UInt384*),
             add_offsets_ptr=add_offsets,
             add_n=6,
             mul_offsets_ptr=mul_offsets,
