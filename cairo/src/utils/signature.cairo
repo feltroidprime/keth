@@ -5,6 +5,7 @@ from starkware.cairo.common.cairo_builtins import (
     UInt384,
     PoseidonBuiltin,
 )
+from starkware.cairo.common.poseidon_state import PoseidonBuiltinState
 from starkware.cairo.common.registers import get_fp_and_pc, get_label_location
 from ethereum.utils.numeric import divmod
 
@@ -177,7 +178,7 @@ func try_get_point_from_x_secp256k1{
     let (add_offsets_ptr: felt*) = get_label_location(add_offsets_ptr_loc);
     let (mul_offsets_ptr: felt*) = get_label_location(mul_offsets_ptr_loc);
     let constants_ptr_len = 2;
-    let input_len = 24;
+    let input_len = 6;
     let add_mod_n = 5;
     let mul_mod_n = 7;
     let n_assert_eq = 1;
@@ -227,7 +228,13 @@ func try_get_point_from_x_secp256k1{
     }
 
     run_modulo_circuit_basic(
-        P, add_offsets_ptr, add_mod_n, mul_offsets_ptr, mul_mod_n, input_len, n_assert_eq
+        P,
+        add_offsets_ptr,
+        add_mod_n,
+        mul_offsets_ptr,
+        mul_mod_n,
+        input_len + constants_ptr_len,
+        n_assert_eq,
     );
 
     if (rhs_from_x_is_a_square_residue != 0) {
@@ -370,6 +377,7 @@ namespace Signature {
         public_key_point: G1Point, success: felt
     ) {
         alloc_locals;
+        let (__fp__, _) = get_fp_and_pc();
         let (local r_point: G1Point*) = alloc();
         let (is_on_curve) = try_get_point_from_x_secp256k1(x=r, v=y_parity, result=r_point);
         if (is_on_curve == 0) {
@@ -417,6 +425,9 @@ namespace Signature {
         let (en2_high_384) = felt_to_UInt384(en2_high);
         let (sp2_high_384) = sign_to_UInt384_mod_secp256k1(sp2_high);
         let (sn2_high_384) = sign_to_UInt384_mod_secp256k1(sn2_high);
+        let (local generator_point: G1Point) = get_generator_point();
+
+        // _hash_inputs_points_scalars_and_result_points
 
         %{
             from garaga.hints.io import pack_bigint_ptr, pack_felt_ptr, fill_sum_dlog_div, fill_g1_point, bigint_split
@@ -432,11 +443,11 @@ namespace Signature {
             Q_low, Q_high, Q_high_shifted, RLCSumDlogDiv = msm_hint.elmts
 
             def fill_elmt_at_index(
-                x, ptr: object, memory: object, index: int
+                x, ptr: object, memory: object, index: int, static_offset: int = 0
             ):
                 limbs = bigint_split(x, 4, 2**96)
                 for i in range(4):
-                    memory[ptr + index * 4 + i] = limbs[i]
+                    memory[ptr + index * 4 + i + static_offset] = limbs[i]
                 return
 
 
@@ -445,28 +456,64 @@ namespace Signature {
                 ptr: object,
                 memory: object,
                 index: int,
+                static_offset: int = 0,
             ):
                 for i in range(len(x)):
-                    fill_elmt_at_index(x[i], ptr + i * 4, memory, index)
+                    fill_elmt_at_index(x[i], ptr + i * 4, memory, index, static_offset)
                 return
 
             rlc_sum_dlog_div_coeffs = RLCSumDlogDiv.a_num + RLCSumDlogDiv.a_den + RLCSumDlogDiv.b_num + RLCSumDlogDiv.b_den
             assert len(rlc_sum_dlog_div_coeffs) == 18 + 4*2, f"len(rlc_sum_dlog_div_coeffs) == {len(rlc_sum_dlog_div_coeffs)} != {18 + 4*2}"
-            fill_elmts_at_index(rlc_sum_dlog_div_coeffs, ids.range_check96_ptr, memory, 4)
 
-            fill_elmt_at_index(Q_low[0], ids.range_check96_ptr, memory, 50)
-            fill_elmt_at_index(Q_low[1], ids.range_check96_ptr, memory, 51)
-            fill_elmt_at_index(Q_high[0], ids.range_check96_ptr, memory, 52)
-            fill_elmt_at_index(Q_high[1], ids.range_check96_ptr, memory, 53)
-            fill_elmt_at_index(Q_high_shifted[0], ids.range_check96_ptr, memory, 54)
-            fill_elmt_at_index(Q_high_shifted[1], ids.range_check96_ptr, memory, 55)
+
+            offset = 4
+            fill_elmts_at_index(rlc_sum_dlog_div_coeffs, ids.range_check96_ptr, memory, 4, offset)
+
+            fill_elmt_at_index(Q_low[0], ids.range_check96_ptr, memory, 50, offset)
+            fill_elmt_at_index(Q_low[1], ids.range_check96_ptr, memory, 51, offset)
+            fill_elmt_at_index(Q_high[0], ids.range_check96_ptr, memory, 52, offset)
+            fill_elmt_at_index(Q_high[1], ids.range_check96_ptr, memory, 53, offset)
+            fill_elmt_at_index(Q_high_shifted[0], ids.range_check96_ptr, memory, 54, offset)
+            fill_elmt_at_index(Q_high_shifted[1], ids.range_check96_ptr, memory, 55, offset)
 
 
             print(f"Hashing Z = Poseidon(Input, Commitments) = Hash(Points, scalars, Q_low, Q_high, Q_high_shifted, SumDlogDivLow, SumDlogDivHigh, SumDlogDivShifted)...")
         %}
 
-        let ecip_input: UInt384* = cast(range_check96_ptr, UInt384*);
+        assert poseidon_ptr[0].input = PoseidonBuiltinState(s0='MSM_G1', s1=0, s2=1);
+        assert poseidon_ptr[1].input = PoseidonBuiltinState(
+            s0=secp256k1.CURVE_ID + poseidon_ptr[0].output.s0,
+            s1=2 + poseidon_ptr[0].output.s1,
+            s2=poseidon_ptr[0].output.s2,
+        );
 
+        // tempvar init_s0 = poseidon_ptr[1].output.s0 + 0;
+        // // %{ print(f"CAIROS0: {hex(ids.init_s0)}") %}
+        let poseidon_ptr = poseidon_ptr + 2 * PoseidonBuiltin.SIZE;
+        let (_, _, _) = hash_full_transcript_and_get_Z_3_LIMBS(cast(&generator_point, felt*), 2);
+        let (_, _, _) = hash_full_transcript_and_get_Z_3_LIMBS(cast(r_point, felt*), 2);
+        // Q_low, Q_high, Q_high_shifted (filled by prover) (50 - 55).
+        let (_s0, _s1, _s2) = hash_full_transcript_and_get_Z_3_LIMBS(
+            cast(range_check96_ptr + 4 + 50 * N_LIMBS, felt*), 3 * 2
+        );
+        // U1, U2
+        assert poseidon_ptr[0].input = PoseidonBuiltinState(
+            s0=_s0 + u1.low, s1=_s1 + u1.high, s2=_s2
+        );
+        assert poseidon_ptr[1].input = PoseidonBuiltinState(
+            s0=poseidon_ptr[0].output.s0 + u2.low,
+            s1=poseidon_ptr[0].output.s1 + u2.high,
+            s2=poseidon_ptr[0].output.s2,
+        );
+
+        tempvar rlc_coeff = poseidon_ptr[1].output.s1 + 0;
+        let poseidon_ptr = poseidon_ptr + 2 * PoseidonBuiltin.SIZE;
+        assert 1 = 1;
+
+        %{ print(f"CAIRORLC: {hex(ids.rlc_coeff)}") %}
+        let (rlc_coeff_u384) = felt_to_UInt384(rlc_coeff);
+
+        let ecip_input: UInt384* = cast(range_check96_ptr, UInt384*);
         // Constants
         assert ecip_input[0] = UInt384(3, 0, 0, 0);
         assert ecip_input[1] = UInt384(0, 0, 0, 0);
@@ -511,13 +558,13 @@ namespace Signature {
         // ...
         // Random point A0
 
-        assert ecip_input[56] = UInt384(1, 0, 0, 0);
-        assert ecip_input[57] = UInt384(0, 0, 0, 0);
+        assert ecip_input[56] = generator_point.x;
+        assert ecip_input[57] = generator_point.y;
 
         // a_weirstrass
         assert ecip_input[58] = UInt384(secp256k1.A0, secp256k1.A1, secp256k1.A2, secp256k1.A3);
         // base_rlc
-        assert ecip_input[59] = UInt384(2, 0, 0, 0);
+        assert ecip_input[59] = rlc_coeff_u384;
 
         // let (point1) = ec_mul(generator_point, u1);
         // let (minus_point1) = ec_negate(point1);
@@ -631,18 +678,19 @@ func add_ec_points_secp256k1{
             // P = Q, so we need to double the point
             let (add_offsets, mul_offsets) = get_DOUBLE_EC_POINT_circuit();
             let input: UInt384* = cast(range_check96_ptr, UInt384*);
-            assert input[0] = P.x;
-            assert input[1] = P.y;
-            assert input[2] = UInt384(secp256k1.A0, secp256k1.A1, secp256k1.A2, secp256k1.A3);
+            assert input[0] = UInt384(3, 0, 0, 0);
+            assert input[1] = P.x;
+            assert input[2] = P.y;
+            assert input[3] = UInt384(secp256k1.A0, secp256k1.A1, secp256k1.A2, secp256k1.A3);
 
             run_modulo_circuit_basic(
                 p=modulus,
                 add_offsets_ptr=add_offsets,
                 add_n=6,
                 mul_offsets_ptr=mul_offsets,
-                mul_n=3,
+                mul_n=5,
                 input_len=4,
-                n_assert_eq=2,
+                n_assert_eq=0,
             );
             return (
                 res=G1Point(
@@ -667,7 +715,7 @@ func add_ec_points_secp256k1{
             mul_offsets_ptr=mul_offsets,
             mul_n=3,
             input_len=4,
-            n_assert_eq=2,
+            n_assert_eq=0,
         );
         return (
             res=G1Point(
