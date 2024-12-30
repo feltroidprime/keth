@@ -130,7 +130,7 @@ markers = [
   "NoCI",
   "slow",
 ]
-norecursedirs = "tests/ef_tests/test_data"
+norecursedirs = ".* tests/ef_tests/test_data"
 
 [project.scripts]
 compile_os = "src.utils.compile_cairo:compile_os"
@@ -146,7 +146,6 @@ dev-dependencies = [
   "eth-utils>=5.0.0",
   "hypothesis>=6.112.1",
   "ipykernel>=6.29.5",
-  "protobuf>=5.28.1",
   "pytest-xdist>=3.6.1",
   "pytest>=8.3.3",
   "pydantic>=2.9.1",
@@ -157,11 +156,14 @@ profile = "black"
 src_paths = ["src", "tests"]
 
 [tool.uv.sources]
-ethereum = { git = "https://github.com/ethereum/execution-specs.git", rev = "1adcc1bfe774798bcacc685aebc17bd9935078c3" }
+ethereum = { git = "https://github.com/kkrt-labs/execution-specs.git", branch = "dev/change-type-branch-nodes" }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["polars>=1.17.1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
