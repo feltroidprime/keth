@@ -22,6 +22,7 @@ from garaga.precompiled_circuits.ec import (
     ECIPCircuits,
     IsOnCurveCircuit,
 )
+from garaga.starknet.tests_and_calldata_generators.msm import MSMCalldataBuilder
 
 
 class FullEcdsaCircuitBatched(BaseModuloCircuit):
@@ -40,25 +41,9 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
             compilation_mode=compilation_mode,
         )
 
-    @staticmethod
-    def _n_coeffs_from_n_points(n_points: int) -> tuple[int, int, int, int]:
-        return (
-            1 + n_points + 2,
-            1 + n_points + 1 + 2,
-            1 + n_points + 1 + 2,
-            1 + n_points + 4 + 2,
-        )
-
-    @staticmethod
-    def _n_points_from_n_coeffs(n_coeffs: int) -> int:
-        # n_coeffs = 18 + 4n_points => 4n_points = n_coeffs - 18
-        assert n_coeffs >= 18 + 4
-        assert (n_coeffs - 18) % 4 == 0
-        return (n_coeffs - 18) // 4
-
     def build_input(self) -> list[PyFelt]:
         input = []
-        n_coeffs = self._n_coeffs_from_n_points(self.n_points)
+        n_coeffs = n_coeffs_from_n_points(self.n_points, batched=True)
 
         # RLCSumDlogDiv
         for _ in range(sum(n_coeffs)):
@@ -86,11 +71,64 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
 
         return input
 
+    def sample_input(self):
+        cid = CurveID(self.curve_id)
+        pts = [G1Point.get_nG(cid, i + 1) for i in range(self.n_points)]
+        scalars = [2**128 + 32, 2**240 + 33]
+        builder = MSMCalldataBuilder(cid, pts, scalars)
+        (msm_hint, derive_point_from_x_hint) = builder.build_msm_hints()
+        scalars_low, scalars_high = builder.scalars_split()
+        epns_low, epns_high = [neg_3.scalar_to_base_neg3_le(s) for s in scalars_low], [
+            neg_3.scalar_to_base_neg3_le(s) for s in scalars_high
+        ]
+
+        Q_low, Q_high, Q_high_shifted, RLCSumDlogDiv = msm_hint.elmts
+
+        rlc_sum_dlog_div_coeffs = (
+            RLCSumDlogDiv.a_num
+            + RLCSumDlogDiv.a_den
+            + RLCSumDlogDiv.b_num
+            + RLCSumDlogDiv.b_den
+        )
+
+        assert len(rlc_sum_dlog_div_coeffs) == sum(
+            n_coeffs_from_n_points(self.n_points, batched=True)
+        )
+
+        input = []
+        input.extend(rlc_sum_dlog_div_coeffs)
+
+        def sign(x):
+            return 1 if x > 0 else -1
+
+        for i in range(self.n_points):
+            input.append(self.field(pts[i].x))
+            input.append(self.field(pts[i].y))
+            print(f"{i}: epns_low: {epns_low[i]}")
+            input.append(self.field(epns_low[i][0]))
+            input.append(self.field(epns_low[i][1]))
+            input.append(self.field(sign(epns_low[i][0])))
+            input.append(self.field(sign(epns_low[i][1])))
+            input.append(self.field(epns_high[i][0]))
+            input.append(self.field(epns_high[i][1]))
+            input.append(self.field(sign(epns_high[i][0])))
+            input.append(self.field(sign(epns_high[i][1])))
+
+        input.extend(Q_low.elmts)
+        input.extend(Q_high.elmts)
+        input.extend(Q_high_shifted.elmts)
+        _random = builder.A0
+        input.extend([self.field(_random.x), self.field(_random.y)])
+        input.append(self.field(CURVES[self.curve_id].a))  # A_weirstrass
+        input.append(self.field(builder.rlc_coeff))  # base_rlc
+
+        return input
+
     def _run_circuit_inner(self, input: list[PyFelt]) -> ModuloCircuit:
         circuit = ECIPCircuits(
             self.name, self.curve_id, compilation_mode=self.compilation_mode
         )
-        n_coeffs = self._n_coeffs_from_n_points(self.n_points)
+        n_coeffs = n_coeffs_from_n_points(self.n_points, batched=True)
         ff_coeffs = input[: sum(n_coeffs)]
 
         all_points = input[sum(n_coeffs) :]
@@ -112,19 +150,19 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
         sp_highs = []
         sn_highs = []
         for i in range(self.n_points):
-            points.append(
-                circuit.write_struct(
-                    G1PointCircuit(f"p_{i}", all_points[i * 8 : i * 8 + 2]),
-                )
-            )
-            ep_lows.append(all_points[i * 8 + 3])
-            en_lows.append(all_points[i * 8 + 4])
-            sp_lows.append(all_points[i * 8 + 5])
-            sn_lows.append(all_points[i * 8 + 6])
-            ep_highs.append(all_points[i * 8 + 7])
-            en_highs.append(all_points[i * 8 + 8])
-            sp_highs.append(all_points[i * 8 + 9])
-            sn_highs.append(all_points[i * 8 + 10])
+            print(f"i: {i}")
+            base_idx = i * 10
+            pt_circuit = G1PointCircuit(f"p_{i}", all_points[base_idx : base_idx + 2])
+            pt_circuit.validate(self.curve_id)
+            points.append(circuit.write_struct(pt_circuit))
+            ep_lows.append(all_points[base_idx + 2])
+            en_lows.append(all_points[base_idx + 3])
+            sp_lows.append(all_points[base_idx + 4])
+            sn_lows.append(all_points[base_idx + 5])
+            ep_highs.append(all_points[base_idx + 6])
+            en_highs.append(all_points[base_idx + 7])
+            sp_highs.append(all_points[base_idx + 8])
+            sn_highs.append(all_points[base_idx + 9])
 
         epns_low = circuit.write_struct(
             structs.StructSpan(
@@ -164,7 +202,7 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
             )
         )
 
-        rest_points = all_points[self.n_points * 8 :]
+        rest_points = all_points[self.n_points * 10 :]
         q_low = circuit.write_struct(
             structs.G1PointCircuit("q_low", elmts=rest_points[0:2])
         )
@@ -175,7 +213,9 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
         q_high_shifted = circuit.write_struct(
             structs.G1PointCircuit("q_high_shifted", elmts=rest_points[4:6]),
         )
-        a0 = circuit.write_struct(structs.G1PointCircuit("a0", elmts=rest_points[6:8]))
+        random_point = structs.G1PointCircuit("a0", elmts=rest_points[6:8])
+        random_point.validate(self.curve_id)
+        a0 = circuit.write_struct(random_point)
 
         A_weirstrass = circuit.write_struct(
             structs.u384("A_weirstrass", elmts=[rest_points[8]])
@@ -190,7 +230,7 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
 
         def get_log_div_coeffs(circuit, ff_coeffs):
             _log_div_a_num, _log_div_a_den, _log_div_b_num, _log_div_b_den = split_list(
-                ff_coeffs, self._n_coeffs_from_n_points(self.n_points)
+                ff_coeffs, n_coeffs_from_n_points(self.n_points, batched=True)
             )
             log_div_a_num, log_div_a_den, log_div_b_num, log_div_b_den = (
                 circuit.write_struct(
@@ -199,7 +239,7 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
                         elmts=[
                             structs.u384Span("log_div_a_num", _log_div_a_num),
                             structs.u384Span("log_div_a_den", _log_div_a_den),
-                            structs.u384Span("log_dsumiv_b_num", _log_div_b_num),
+                            structs.u384Span("log_div_b_num", _log_div_b_num),
                             structs.u384Span("log_div_b_den", _log_div_b_den),
                         ],
                     ),
@@ -226,8 +266,9 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
 
         def compute_base_rhs(circuit: ECIPCircuits, points, epns, m_A0, b_A0, xA0):
             acc = circuit.set_or_get_constant(0)
-            for pt, _epns in zip(points, epns):
+            for i, (pt, _epns) in enumerate(zip(points, epns)):
                 _epns = io.flatten(_epns)
+                print(f"i: {i}, _epns: {_epns}")
                 acc = circuit._accumulate_eval_point_challenge_signed_same_point(
                     eval_accumulator=acc,
                     slope_intercept=(m_A0, b_A0),
@@ -281,14 +322,23 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
             lhs, rhs, circuit.set_or_get_constant(0), "Assert lhs - rhs = 0"
         )
 
-        # Compute Q_low + Q_high_shifted.
-
         circuit.extend_struct_output(u384("final_check", [final_check]))
 
         return circuit
 
 
 if __name__ == "__main__":
-    circuit = FullEcdsaCircuitBatched(CurveID.SECP256K1.value, n_points=2)
+    circuit = FullEcdsaCircuitBatched(
+        CurveID.SECP256K1.value, n_points=2, auto_run=False
+    )
+    input = circuit.sample_input()
+    print(f"input: {[hex(v.value) for v in input]}")
+    circuit.circuit = circuit._run_circuit_inner(input)
+
     code, _ = circuit.circuit.compile_circuit()
-    print(code)
+    # print(code)
+
+    # # Print constants :
+    # print(circuit.circuit.constants)
+
+    print(circuit.circuit.print_value_segment(base=16))
