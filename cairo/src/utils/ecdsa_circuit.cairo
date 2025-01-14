@@ -216,33 +216,33 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
 
     add_offsets_ptr_loc:
     dw 244;  // None
-    dw 128;
+    dw 232;
     dw 248;
-    dw 124;  // None
-    dw 124;
+    dw 228;  // None
+    dw 228;
     dw 252;
     dw 260;  // None
     dw 264;
-    dw 124;
-    dw 120;  // None
-    dw 120;
+    dw 228;
+    dw 224;  // None
+    dw 224;
     dw 272;
     dw 272;  // None
     dw 276;
     dw 268;
     dw 276;  // None
     dw 280;
-    dw 120;
-    dw 124;  // None
+    dw 224;
+    dw 228;  // None
     dw 288;
     dw 284;
     dw 288;  // None
     dw 292;
     dw 4;
-    dw 124;  // None
+    dw 228;  // None
     dw 296;
     dw 292;
-    dw 120;  // None
+    dw 224;  // None
     dw 300;
     dw 276;
     dw 292;  // None
@@ -250,13 +250,13 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 312;
     dw 276;  // None
     dw 316;
-    dw 120;
+    dw 224;
     dw 308;  // None
     dw 308;
     dw 332;
     dw 332;  // None
     dw 336;
-    dw 128;
+    dw 232;
     dw 328;  // None
     dw 336;
     dw 340;
@@ -266,139 +266,139 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 344;  // None
     dw 348;
     dw 352;
-    dw 148;  // Eval sumdlogdiv_a_num Horner step: add coefficient_3
+    dw 28;  // Eval sumdlogdiv_a_num Horner step: add coefficient_3
     dw 356;
     dw 360;
-    dw 144;  // Eval sumdlogdiv_a_num Horner step: add coefficient_2
+    dw 24;  // Eval sumdlogdiv_a_num Horner step: add coefficient_2
     dw 364;
     dw 368;
-    dw 140;  // Eval sumdlogdiv_a_num Horner step: add coefficient_1
+    dw 20;  // Eval sumdlogdiv_a_num Horner step: add coefficient_1
     dw 372;
     dw 376;
-    dw 136;  // Eval sumdlogdiv_a_num Horner step: add coefficient_0
+    dw 16;  // Eval sumdlogdiv_a_num Horner step: add coefficient_0
     dw 380;
     dw 384;
-    dw 172;  // Eval sumdlogdiv_a_den Horner step: add coefficient_4
+    dw 52;  // Eval sumdlogdiv_a_den Horner step: add coefficient_4
     dw 388;
     dw 392;
-    dw 168;  // Eval sumdlogdiv_a_den Horner step: add coefficient_3
+    dw 48;  // Eval sumdlogdiv_a_den Horner step: add coefficient_3
     dw 396;
     dw 400;
-    dw 164;  // Eval sumdlogdiv_a_den Horner step: add coefficient_2
+    dw 44;  // Eval sumdlogdiv_a_den Horner step: add coefficient_2
     dw 404;
     dw 408;
-    dw 160;  // Eval sumdlogdiv_a_den Horner step: add coefficient_1
+    dw 40;  // Eval sumdlogdiv_a_den Horner step: add coefficient_1
     dw 412;
     dw 416;
-    dw 156;  // Eval sumdlogdiv_a_den Horner step: add coefficient_0
+    dw 36;  // Eval sumdlogdiv_a_den Horner step: add coefficient_0
     dw 420;
     dw 424;
-    dw 196;  // Eval sumdlogdiv_b_num Horner step: add coefficient_4
+    dw 76;  // Eval sumdlogdiv_b_num Horner step: add coefficient_4
     dw 432;
     dw 436;
-    dw 192;  // Eval sumdlogdiv_b_num Horner step: add coefficient_3
+    dw 72;  // Eval sumdlogdiv_b_num Horner step: add coefficient_3
     dw 440;
     dw 444;
-    dw 188;  // Eval sumdlogdiv_b_num Horner step: add coefficient_2
+    dw 68;  // Eval sumdlogdiv_b_num Horner step: add coefficient_2
     dw 448;
     dw 452;
-    dw 184;  // Eval sumdlogdiv_b_num Horner step: add coefficient_1
+    dw 64;  // Eval sumdlogdiv_b_num Horner step: add coefficient_1
     dw 456;
     dw 460;
-    dw 180;  // Eval sumdlogdiv_b_num Horner step: add coefficient_0
+    dw 60;  // Eval sumdlogdiv_b_num Horner step: add coefficient_0
     dw 464;
     dw 468;
-    dw 232;  // Eval sumdlogdiv_b_den Horner step: add coefficient_7
+    dw 112;  // Eval sumdlogdiv_b_den Horner step: add coefficient_7
     dw 472;
     dw 476;
-    dw 228;  // Eval sumdlogdiv_b_den Horner step: add coefficient_6
+    dw 108;  // Eval sumdlogdiv_b_den Horner step: add coefficient_6
     dw 480;
     dw 484;
-    dw 224;  // Eval sumdlogdiv_b_den Horner step: add coefficient_5
+    dw 104;  // Eval sumdlogdiv_b_den Horner step: add coefficient_5
     dw 488;
     dw 492;
-    dw 220;  // Eval sumdlogdiv_b_den Horner step: add coefficient_4
+    dw 100;  // Eval sumdlogdiv_b_den Horner step: add coefficient_4
     dw 496;
     dw 500;
-    dw 216;  // Eval sumdlogdiv_b_den Horner step: add coefficient_3
+    dw 96;  // Eval sumdlogdiv_b_den Horner step: add coefficient_3
     dw 504;
     dw 508;
-    dw 212;  // Eval sumdlogdiv_b_den Horner step: add coefficient_2
+    dw 92;  // Eval sumdlogdiv_b_den Horner step: add coefficient_2
     dw 512;
     dw 516;
-    dw 208;  // Eval sumdlogdiv_b_den Horner step: add coefficient_1
+    dw 88;  // Eval sumdlogdiv_b_den Horner step: add coefficient_1
     dw 520;
     dw 524;
-    dw 204;  // Eval sumdlogdiv_b_den Horner step: add coefficient_0
+    dw 84;  // Eval sumdlogdiv_b_den Horner step: add coefficient_0
     dw 528;
     dw 532;
     dw 428;  // None
     dw 540;
     dw 544;
-    dw 148;  // Eval sumdlogdiv_a_num Horner step: add coefficient_3
+    dw 28;  // Eval sumdlogdiv_a_num Horner step: add coefficient_3
     dw 548;
     dw 552;
-    dw 144;  // Eval sumdlogdiv_a_num Horner step: add coefficient_2
+    dw 24;  // Eval sumdlogdiv_a_num Horner step: add coefficient_2
     dw 556;
     dw 560;
-    dw 140;  // Eval sumdlogdiv_a_num Horner step: add coefficient_1
+    dw 20;  // Eval sumdlogdiv_a_num Horner step: add coefficient_1
     dw 564;
     dw 568;
-    dw 136;  // Eval sumdlogdiv_a_num Horner step: add coefficient_0
+    dw 16;  // Eval sumdlogdiv_a_num Horner step: add coefficient_0
     dw 572;
     dw 576;
-    dw 172;  // Eval sumdlogdiv_a_den Horner step: add coefficient_4
+    dw 52;  // Eval sumdlogdiv_a_den Horner step: add coefficient_4
     dw 580;
     dw 584;
-    dw 168;  // Eval sumdlogdiv_a_den Horner step: add coefficient_3
+    dw 48;  // Eval sumdlogdiv_a_den Horner step: add coefficient_3
     dw 588;
     dw 592;
-    dw 164;  // Eval sumdlogdiv_a_den Horner step: add coefficient_2
+    dw 44;  // Eval sumdlogdiv_a_den Horner step: add coefficient_2
     dw 596;
     dw 600;
-    dw 160;  // Eval sumdlogdiv_a_den Horner step: add coefficient_1
+    dw 40;  // Eval sumdlogdiv_a_den Horner step: add coefficient_1
     dw 604;
     dw 608;
-    dw 156;  // Eval sumdlogdiv_a_den Horner step: add coefficient_0
+    dw 36;  // Eval sumdlogdiv_a_den Horner step: add coefficient_0
     dw 612;
     dw 616;
-    dw 196;  // Eval sumdlogdiv_b_num Horner step: add coefficient_4
+    dw 76;  // Eval sumdlogdiv_b_num Horner step: add coefficient_4
     dw 624;
     dw 628;
-    dw 192;  // Eval sumdlogdiv_b_num Horner step: add coefficient_3
+    dw 72;  // Eval sumdlogdiv_b_num Horner step: add coefficient_3
     dw 632;
     dw 636;
-    dw 188;  // Eval sumdlogdiv_b_num Horner step: add coefficient_2
+    dw 68;  // Eval sumdlogdiv_b_num Horner step: add coefficient_2
     dw 640;
     dw 644;
-    dw 184;  // Eval sumdlogdiv_b_num Horner step: add coefficient_1
+    dw 64;  // Eval sumdlogdiv_b_num Horner step: add coefficient_1
     dw 648;
     dw 652;
-    dw 180;  // Eval sumdlogdiv_b_num Horner step: add coefficient_0
+    dw 60;  // Eval sumdlogdiv_b_num Horner step: add coefficient_0
     dw 656;
     dw 660;
-    dw 232;  // Eval sumdlogdiv_b_den Horner step: add coefficient_7
+    dw 112;  // Eval sumdlogdiv_b_den Horner step: add coefficient_7
     dw 664;
     dw 668;
-    dw 228;  // Eval sumdlogdiv_b_den Horner step: add coefficient_6
+    dw 108;  // Eval sumdlogdiv_b_den Horner step: add coefficient_6
     dw 672;
     dw 676;
-    dw 224;  // Eval sumdlogdiv_b_den Horner step: add coefficient_5
+    dw 104;  // Eval sumdlogdiv_b_den Horner step: add coefficient_5
     dw 680;
     dw 684;
-    dw 220;  // Eval sumdlogdiv_b_den Horner step: add coefficient_4
+    dw 100;  // Eval sumdlogdiv_b_den Horner step: add coefficient_4
     dw 688;
     dw 692;
-    dw 216;  // Eval sumdlogdiv_b_den Horner step: add coefficient_3
+    dw 96;  // Eval sumdlogdiv_b_den Horner step: add coefficient_3
     dw 696;
     dw 700;
-    dw 212;  // Eval sumdlogdiv_b_den Horner step: add coefficient_2
+    dw 92;  // Eval sumdlogdiv_b_den Horner step: add coefficient_2
     dw 704;
     dw 708;
-    dw 208;  // Eval sumdlogdiv_b_den Horner step: add coefficient_1
+    dw 88;  // Eval sumdlogdiv_b_den Horner step: add coefficient_1
     dw 712;
     dw 716;
-    dw 204;  // Eval sumdlogdiv_b_den Horner step: add coefficient_0
+    dw 84;  // Eval sumdlogdiv_b_den Horner step: add coefficient_0
     dw 720;
     dw 724;
     dw 620;  // None
@@ -407,16 +407,16 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 744;  // None
     dw 748;
     dw 740;
-    dw 16;  // None
+    dw 120;  // None
     dw 752;
-    dw 120;
+    dw 224;
     dw 756;  // None
     dw 264;
     dw 760;
     dw 760;  // None
     dw 764;
-    dw 20;
-    dw 20;  // None
+    dw 124;
+    dw 124;  // None
     dw 768;
     dw 4;
     dw 760;  // None
@@ -428,16 +428,16 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 4;  // None
     dw 800;
     dw 804;
-    dw 24;  // None
+    dw 128;  // None
     dw 808;
-    dw 120;
+    dw 224;
     dw 812;  // None
     dw 264;
     dw 816;
     dw 816;  // None
     dw 820;
-    dw 28;
-    dw 28;  // None
+    dw 132;
+    dw 132;  // None
     dw 824;
     dw 4;
     dw 816;  // None
@@ -449,13 +449,13 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 804;  // None
     dw 856;
     dw 860;
-    dw 96;  // None
+    dw 200;  // None
     dw 864;
-    dw 120;
+    dw 224;
     dw 868;  // None
     dw 264;
     dw 872;
-    dw 100;  // None
+    dw 204;  // None
     dw 876;
     dw 4;
     dw 872;  // None
@@ -464,16 +464,16 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 860;  // None
     dw 884;
     dw 888;
-    dw 16;  // None
+    dw 120;  // None
     dw 892;
-    dw 120;
+    dw 224;
     dw 896;  // None
     dw 264;
     dw 900;
     dw 900;  // None
     dw 904;
-    dw 20;
-    dw 20;  // None
+    dw 124;
+    dw 124;  // None
     dw 908;
     dw 4;
     dw 900;  // None
@@ -485,16 +485,16 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 4;  // None
     dw 940;
     dw 944;
-    dw 24;  // None
+    dw 128;  // None
     dw 948;
-    dw 120;
+    dw 224;
     dw 952;  // None
     dw 264;
     dw 956;
     dw 956;  // None
     dw 960;
-    dw 28;
-    dw 28;  // None
+    dw 132;
+    dw 132;  // None
     dw 964;
     dw 4;
     dw 956;  // None
@@ -506,13 +506,13 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 944;  // None
     dw 996;
     dw 1000;
-    dw 104;  // None
+    dw 208;  // None
     dw 1004;
-    dw 120;
+    dw 224;
     dw 1008;  // None
     dw 264;
     dw 1012;
-    dw 108;  // None
+    dw 212;  // None
     dw 1016;
     dw 4;
     dw 1012;  // None
@@ -521,16 +521,16 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 1000;  // None
     dw 1024;
     dw 1028;
-    dw 104;  // None
+    dw 208;  // None
     dw 1032;
-    dw 120;
+    dw 224;
     dw 1036;  // None
     dw 264;
     dw 1040;
     dw 1040;  // None
     dw 1044;
-    dw 108;
-    dw 108;  // None
+    dw 212;
+    dw 212;  // None
     dw 1048;
     dw 4;
     dw 1040;  // None
@@ -542,13 +542,13 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 1072;  // None
     dw 1076;
     dw 1064;
-    dw 112;  // None
+    dw 216;  // None
     dw 1080;
-    dw 120;
+    dw 224;
     dw 1084;  // None
     dw 264;
     dw 1088;
-    dw 116;  // None
+    dw 220;  // None
     dw 1092;
     dw 4;
     dw 1088;  // None
@@ -568,8 +568,8 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 748;
 
     mul_offsets_ptr_loc:
-    dw 120;  // None
-    dw 120;
+    dw 224;  // None
+    dw 224;
     dw 240;
     dw 0;  // None
     dw 240;
@@ -577,7 +577,7 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 252;  // None
     dw 256;
     dw 248;
-    dw 120;  // None
+    dw 224;  // None
     dw 256;
     dw 260;
     dw 256;  // None
@@ -604,82 +604,82 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 340;  // None
     dw 344;
     dw 320;
-    dw 152;  // Eval sumdlogdiv_a_num Horner step: multiply by xA0
-    dw 120;
+    dw 32;  // Eval sumdlogdiv_a_num Horner step: multiply by xA0
+    dw 224;
     dw 356;
     dw 360;  // Eval sumdlogdiv_a_num Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 364;
     dw 368;  // Eval sumdlogdiv_a_num Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 372;
     dw 376;  // Eval sumdlogdiv_a_num Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 380;
-    dw 176;  // Eval sumdlogdiv_a_den Horner step: multiply by xA0
-    dw 120;
+    dw 56;  // Eval sumdlogdiv_a_den Horner step: multiply by xA0
+    dw 224;
     dw 388;
     dw 392;  // Eval sumdlogdiv_a_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 396;
     dw 400;  // Eval sumdlogdiv_a_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 404;
     dw 408;  // Eval sumdlogdiv_a_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 412;
     dw 416;  // Eval sumdlogdiv_a_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 420;
     dw 424;  // None
     dw 428;
     dw 384;
-    dw 200;  // Eval sumdlogdiv_b_num Horner step: multiply by xA0
-    dw 120;
+    dw 80;  // Eval sumdlogdiv_b_num Horner step: multiply by xA0
+    dw 224;
     dw 432;
     dw 436;  // Eval sumdlogdiv_b_num Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 440;
     dw 444;  // Eval sumdlogdiv_b_num Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 448;
     dw 452;  // Eval sumdlogdiv_b_num Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 456;
     dw 460;  // Eval sumdlogdiv_b_num Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 464;
-    dw 236;  // Eval sumdlogdiv_b_den Horner step: multiply by xA0
-    dw 120;
+    dw 116;  // Eval sumdlogdiv_b_den Horner step: multiply by xA0
+    dw 224;
     dw 472;
     dw 476;  // Eval sumdlogdiv_b_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 480;
     dw 484;  // Eval sumdlogdiv_b_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 488;
     dw 492;  // Eval sumdlogdiv_b_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 496;
     dw 500;  // Eval sumdlogdiv_b_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 504;
     dw 508;  // Eval sumdlogdiv_b_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 512;
     dw 516;  // Eval sumdlogdiv_b_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 520;
     dw 524;  // Eval sumdlogdiv_b_den Horner step: multiply by xA0
-    dw 120;
+    dw 224;
     dw 528;
     dw 532;  // None
     dw 536;
     dw 468;
-    dw 124;  // None
+    dw 228;  // None
     dw 536;
     dw 540;
-    dw 152;  // Eval sumdlogdiv_a_num Horner step: multiply by xA2
+    dw 32;  // Eval sumdlogdiv_a_num Horner step: multiply by xA2
     dw 276;
     dw 548;
     dw 552;  // Eval sumdlogdiv_a_num Horner step: multiply by xA2
@@ -691,7 +691,7 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 568;  // Eval sumdlogdiv_a_num Horner step: multiply by xA2
     dw 276;
     dw 572;
-    dw 176;  // Eval sumdlogdiv_a_den Horner step: multiply by xA2
+    dw 56;  // Eval sumdlogdiv_a_den Horner step: multiply by xA2
     dw 276;
     dw 580;
     dw 584;  // Eval sumdlogdiv_a_den Horner step: multiply by xA2
@@ -709,7 +709,7 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 616;  // None
     dw 620;
     dw 576;
-    dw 200;  // Eval sumdlogdiv_b_num Horner step: multiply by xA2
+    dw 80;  // Eval sumdlogdiv_b_num Horner step: multiply by xA2
     dw 276;
     dw 624;
     dw 628;  // Eval sumdlogdiv_b_num Horner step: multiply by xA2
@@ -724,7 +724,7 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 652;  // Eval sumdlogdiv_b_num Horner step: multiply by xA2
     dw 276;
     dw 656;
-    dw 236;  // Eval sumdlogdiv_b_den Horner step: multiply by xA2
+    dw 116;  // Eval sumdlogdiv_b_den Horner step: multiply by xA2
     dw 276;
     dw 664;
     dw 668;  // Eval sumdlogdiv_b_den Horner step: multiply by xA2
@@ -761,10 +761,10 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 736;
     dw 744;
     dw 256;  // None
-    dw 16;
+    dw 120;
     dw 756;
-    dw 40;  // None
-    dw 32;
+    dw 144;  // None
+    dw 136;
     dw 776;
     dw 764;  // None
     dw 780;
@@ -772,8 +772,8 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 776;  // None
     dw 780;
     dw 784;
-    dw 44;  // None
-    dw 36;
+    dw 148;  // None
+    dw 140;
     dw 788;
     dw 772;  // None
     dw 792;
@@ -782,10 +782,10 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 792;
     dw 796;
     dw 256;  // None
-    dw 24;
+    dw 128;
     dw 812;
-    dw 56;  // None
-    dw 48;
+    dw 160;  // None
+    dw 152;
     dw 832;
     dw 820;  // None
     dw 836;
@@ -793,8 +793,8 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 832;  // None
     dw 836;
     dw 840;
-    dw 60;  // None
-    dw 52;
+    dw 164;  // None
+    dw 156;
     dw 844;
     dw 828;  // None
     dw 848;
@@ -803,16 +803,16 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 848;
     dw 852;
     dw 256;  // None
-    dw 96;
+    dw 200;
     dw 868;
     dw 880;  // None
     dw 884;
     dw 864;
     dw 256;  // None
-    dw 16;
+    dw 120;
     dw 896;
-    dw 72;  // None
-    dw 64;
+    dw 176;  // None
+    dw 168;
     dw 916;
     dw 904;  // None
     dw 920;
@@ -820,8 +820,8 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 916;  // None
     dw 920;
     dw 924;
-    dw 76;  // None
-    dw 68;
+    dw 180;  // None
+    dw 172;
     dw 928;
     dw 912;  // None
     dw 932;
@@ -830,10 +830,10 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 932;
     dw 936;
     dw 256;  // None
-    dw 24;
+    dw 128;
     dw 952;
-    dw 88;  // None
-    dw 80;
+    dw 192;  // None
+    dw 184;
     dw 972;
     dw 960;  // None
     dw 976;
@@ -841,8 +841,8 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 972;  // None
     dw 976;
     dw 980;
-    dw 92;  // None
-    dw 84;
+    dw 196;  // None
+    dw 188;
     dw 984;
     dw 968;  // None
     dw 988;
@@ -851,13 +851,13 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 988;
     dw 992;
     dw 256;  // None
-    dw 104;
+    dw 208;
     dw 1008;
     dw 1020;  // None
     dw 1024;
     dw 1004;
     dw 256;  // None
-    dw 104;
+    dw 208;
     dw 1036;
     dw 1044;  // None
     dw 1060;
@@ -872,19 +872,19 @@ func get_full_ecip_2P_circuit() -> (add_offsets: felt*, mul_offsets: felt*) {
     dw 1068;
     dw 1072;
     dw 256;  // None
-    dw 112;
+    dw 216;
     dw 1084;
     dw 1096;  // None
     dw 1100;
     dw 1080;
-    dw 132;  // c1 = c0^2
-    dw 132;
+    dw 236;  // c1 = c0^2
+    dw 236;
     dw 1108;
     dw 1108;  // c2 = c0^3
-    dw 132;
+    dw 236;
     dw 1112;
     dw 888;  // rhs_low * c0
-    dw 132;
+    dw 236;
     dw 1116;
     dw 1028;  // rhs_high * c1
     dw 1108;

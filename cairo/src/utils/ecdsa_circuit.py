@@ -73,8 +73,18 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
 
     def sample_input(self):
         cid = CurveID(self.curve_id)
-        pts = [G1Point.get_nG(cid, i + 1) for i in range(self.n_points)]
-        scalars = [2**128 + 32, 2**240 + 33]
+        pts = [
+            G1Point.get_nG(cid, 1),
+            G1Point(
+                x=111354266934415748707439662129962068258185897787462436790090135304890680225071,
+                y=7955571364956903103447762143713116749685657035734622395391095226875188998922,
+                curve_id=CurveID.SECP256K1,
+            ),
+        ]
+        scalars = [
+            0xF6F935191273414ADA91071ED97A8A31347F85D5FAC890148FDAC827E0426B68,
+            0x4FDA889C1E0B2F466819231FBF731EBFF91B507CC44A0C810B0DECDEAA99B7D2,
+        ]
         builder = MSMCalldataBuilder(cid, pts, scalars)
         (msm_hint, derive_point_from_x_hint) = builder.build_msm_hints()
         scalars_low, scalars_high = builder.scalars_split()
@@ -119,6 +129,7 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
         input.extend(Q_high.elmts)
         input.extend(Q_high_shifted.elmts)
         _random = builder.A0
+        print(f"A0 : {_random.to_cairo_1()}")
         input.extend([self.field(_random.x), self.field(_random.y)])
         input.append(self.field(CURVES[self.curve_id].a))  # A_weirstrass
         input.append(self.field(builder.rlc_coeff))  # base_rlc
@@ -132,14 +143,39 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
         n_coeffs = n_coeffs_from_n_points(self.n_points, batched=True)
         ff_coeffs = input[: sum(n_coeffs)]
 
-        all_points = input[sum(n_coeffs) :]
-
         def split_list(input_list, lengths):
             start_idx, result = 0, []
             for length in lengths:
                 result.append(input_list[start_idx : start_idx + length])
                 start_idx += length
             return result
+
+        def get_log_div_coeffs(circuit, ff_coeffs):
+            _log_div_a_num, _log_div_a_den, _log_div_b_num, _log_div_b_den = split_list(
+                ff_coeffs, n_coeffs_from_n_points(self.n_points, batched=True)
+            )
+            log_div_a_num, log_div_a_den, log_div_b_num, log_div_b_den = (
+                circuit.write_struct(
+                    structs.FunctionFeltCircuit(
+                        name="SumDlogDiv",
+                        elmts=[
+                            structs.u384Span("log_div_a_num", _log_div_a_num),
+                            structs.u384Span("log_div_a_den", _log_div_a_den),
+                            structs.u384Span("log_div_b_num", _log_div_b_num),
+                            structs.u384Span("log_div_b_den", _log_div_b_den),
+                        ],
+                    ),
+                    WriteOps.INPUT,
+                )
+            )
+
+            return log_div_a_num, log_div_a_den, log_div_b_num, log_div_b_den
+
+        log_div_a_num_low, log_div_a_den_low, log_div_b_num_low, log_div_b_den_low = (
+            get_log_div_coeffs(circuit, ff_coeffs)
+        )
+
+        all_points = input[sum(n_coeffs) :]
 
         points = []
         ep_lows = []
@@ -229,31 +265,6 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
             circuit._slope_intercept_same_point(a0, A_weirstrass)
         )
 
-        def get_log_div_coeffs(circuit, ff_coeffs):
-            _log_div_a_num, _log_div_a_den, _log_div_b_num, _log_div_b_den = split_list(
-                ff_coeffs, n_coeffs_from_n_points(self.n_points, batched=True)
-            )
-            log_div_a_num, log_div_a_den, log_div_b_num, log_div_b_den = (
-                circuit.write_struct(
-                    structs.FunctionFeltCircuit(
-                        name="SumDlogDiv",
-                        elmts=[
-                            structs.u384Span("log_div_a_num", _log_div_a_num),
-                            structs.u384Span("log_div_a_den", _log_div_a_den),
-                            structs.u384Span("log_div_b_num", _log_div_b_num),
-                            structs.u384Span("log_div_b_den", _log_div_b_den),
-                        ],
-                    ),
-                    WriteOps.INPUT,
-                )
-            )
-
-            return log_div_a_num, log_div_a_den, log_div_b_num, log_div_b_den
-
-        log_div_a_num_low, log_div_a_den_low, log_div_b_num_low, log_div_b_den_low = (
-            get_log_div_coeffs(circuit, ff_coeffs)
-        )
-
         lhs = circuit._eval_function_challenge_dupl(
             (xA0, yA0),
             (xA2, yA2),
@@ -337,13 +348,14 @@ if __name__ == "__main__":
         CurveID.SECP256K1.value, n_points=2, auto_run=False
     )
     input = circuit.sample_input()
-    # print(f"input: {[hex(v.value) for v in input]}")
+    print(f"input = {[hex(v.value) for v in input]} len : {len(input)}")
     circuit.circuit = circuit._run_circuit_inner(input)
 
     code, _ = circuit.circuit.compile_circuit()
-    # print(code)
 
     # # Print constants :
     # print(circuit.circuit.constants)
 
     print(circuit.circuit.print_value_segment(base=16))
+
+    # print(code)
