@@ -529,25 +529,24 @@ namespace Signature {
         assert ecip_input[31] = UInt384(
             0xa68554199c47d08ffb10d4b8, 0x5da4fbfc0e1108a8fd17b448, 0x483ada7726a3c465, 0x0
         );  // y_gen
-
-        assert ecip_input[32] = ep1_low_384;
-        assert ecip_input[33] = en1_low_384;
-        assert ecip_input[34] = sp1_low_384;
-        assert ecip_input[35] = sn1_low_384;
-
-        assert ecip_input[36] = ep1_high_384;
-        assert ecip_input[37] = en1_high_384;
-        assert ecip_input[38] = sp1_high_384;
-        assert ecip_input[39] = sn1_high_384;
-
         // R point
-        assert ecip_input[40] = r_point.x;
-        assert ecip_input[41] = r_point.y;
+        assert ecip_input[32] = r_point.x;
+        assert ecip_input[33] = r_point.y;
 
-        assert ecip_input[42] = ep2_low_384;
-        assert ecip_input[43] = en2_low_384;
-        assert ecip_input[44] = sp2_low_384;
-        assert ecip_input[45] = sn2_low_384;
+        assert ecip_input[34] = ep1_low_384;
+        assert ecip_input[35] = en1_low_384;
+        assert ecip_input[36] = sp1_low_384;
+        assert ecip_input[37] = sn1_low_384;
+
+        assert ecip_input[38] = ep2_low_384;
+        assert ecip_input[39] = en2_low_384;
+        assert ecip_input[40] = sp2_low_384;
+        assert ecip_input[41] = sn2_low_384;
+
+        assert ecip_input[42] = ep1_high_384;
+        assert ecip_input[43] = en1_high_384;
+        assert ecip_input[44] = sp1_high_384;
+        assert ecip_input[45] = sn1_high_384;
 
         assert ecip_input[46] = ep2_high_384;
         assert ecip_input[47] = en2_high_384;
@@ -557,9 +556,15 @@ namespace Signature {
         // Q_low / Q_high / Q_high_shifted (filled by prover) (50 - 55).
         // ...
         // Random point A0
+        //  let a0:G1Point = G1Point {x: u384{limb0:0x24bbb2e640ceea04c582be56, limb1:0x3194a04768eadeb55fc1ba0a, limb2:0x7b7954ea50caf5a, limb3:0x0}, y: u384{limb0:0x48afd5cdf3ea97eb92138b3c, limb1:0x796f538416c264e0d776e0d, limb2:0x6ef4f09165269157, limb3:0x0}};
+        //  G1Point{x: u384{limb0:0x7fae4cd63658d585d7d8a264, limb1:0x721fe8c75e82c0be38844e0a, limb2:0x5891e91528037ca, limb3:0x0}, y: u384{limb0:0xa06fe9692227dfdc6dd6b4b5, limb1:0xc4330da0e6a11158bce59b92, limb2:0x524aade87df0f5d7, limb3:0x0}}
 
-        assert ecip_input[56] = generator_point.x;
-        assert ecip_input[57] = generator_point.y;
+        assert ecip_input[56] = UInt384(
+            0x7fae4cd63658d585d7d8a264, 0x721fe8c75e82c0be38844e0a, 0x5891e91528037ca, 0x0
+        );
+        assert ecip_input[57] = UInt384(
+            0xa06fe9692227dfdc6dd6b4b5, 0xc4330da0e6a11158bce59b92, 0x524aade87df0f5d7, 0x0
+        );
 
         // a_weirstrass
         assert ecip_input[58] = UInt384(secp256k1.A0, secp256k1.A1, secp256k1.A2, secp256k1.A3);
@@ -599,6 +604,13 @@ namespace Signature {
         let add_mod_ptr = add_mod_ptr + 117 * ModBuiltin.SIZE;
         let mul_mod_ptr = mul_mod_ptr + 108 * ModBuiltin.SIZE;
         // Add Q_low and Q_high_shifted:
+        // %{
+        //     from garaga.hints.io import pack_bigint_array
+
+        // arro = pack_bigint_array(ids.ecip_input, 4, 2**96, 283)
+        //     for i, v in enumerate(arro):
+        //         print(f"{i}: {hex(v)}")
+        // %}
         let (res) = add_ec_points_secp256k1(
             G1Point(x=ecip_input[50], y=ecip_input[51]), G1Point(x=ecip_input[54], y=ecip_input[55])
         );
