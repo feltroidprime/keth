@@ -99,20 +99,21 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
         input.extend(rlc_sum_dlog_div_coeffs)
 
         def sign(x):
-            return 1 if x > 0 else -1
+            return 1 if x >= 0 else -1
 
         for i in range(self.n_points):
             input.append(self.field(pts[i].x))
             input.append(self.field(pts[i].y))
-            print(f"{i}: epns_low: {epns_low[i]}")
+            print(f"pt_{i}: epns_low: {epns_low[i]}")
             input.append(self.field(epns_low[i][0]))
             input.append(self.field(epns_low[i][1]))
-            input.append(self.field(sign(epns_low[i][0])))
-            input.append(self.field(sign(epns_low[i][1])))
+            input.append(self.field(epns_low[i][2]))
+            input.append(self.field(epns_low[i][3]))
+            print(f"pt_{i}: epns_high: {epns_high[i]}")
             input.append(self.field(epns_high[i][0]))
             input.append(self.field(epns_high[i][1]))
-            input.append(self.field(sign(epns_high[i][0])))
-            input.append(self.field(sign(epns_high[i][1])))
+            input.append(self.field(epns_high[i][2]))
+            input.append(self.field(epns_high[i][3]))
 
         input.extend(Q_low.elmts)
         input.extend(Q_high.elmts)
@@ -283,7 +284,10 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
 
         base_rhs_low = compute_base_rhs(circuit, points, epns_low, m_A0, b_A0, xA0)
         rhs_low = circuit._RHS_finalize_acc(
-            base_rhs_low, (m_A0, b_A0), xA0, (q_low[0], q_low[1])
+            base_rhs_low,
+            (m_A0, b_A0),
+            xA0,
+            (q_low[0], q_low[1]),
         )
 
         base_rhs_high = compute_base_rhs(circuit, points, epns_high, m_A0, b_A0, xA0)
@@ -322,6 +326,7 @@ class FullEcdsaCircuitBatched(BaseModuloCircuit):
             lhs, rhs, circuit.set_or_get_constant(0), "Assert lhs - rhs = 0"
         )
 
+        assert lhs.value == rhs.value, "lhs and rhs must be equal"
         circuit.extend_struct_output(u384("final_check", [final_check]))
 
         return circuit
@@ -332,7 +337,7 @@ if __name__ == "__main__":
         CurveID.SECP256K1.value, n_points=2, auto_run=False
     )
     input = circuit.sample_input()
-    print(f"input: {[hex(v.value) for v in input]}")
+    # print(f"input: {[hex(v.value) for v in input]}")
     circuit.circuit = circuit._run_circuit_inner(input)
 
     code, _ = circuit.circuit.compile_circuit()
