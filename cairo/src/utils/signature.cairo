@@ -166,14 +166,12 @@ func hash_sum_dlog_div_batched{poseidon_ptr: PoseidonBuiltin*}(
 }
 
 func try_get_point_from_x_secp256k1{
-    range_check_ptr,
     range_check96_ptr: felt*,
     add_mod_ptr: ModBuiltin*,
     mul_mod_ptr: ModBuiltin*,
     poseidon_ptr: PoseidonBuiltin*,
 }(x: UInt384, v: felt, result: G1Point*) -> (is_on_curve: felt) {
     alloc_locals;
-
     let (__fp__, _) = get_fp_and_pc();
     let (add_offsets_ptr: felt*) = get_label_location(add_offsets_ptr_loc);
     let (mul_offsets_ptr: felt*) = get_label_location(mul_offsets_ptr_loc);
@@ -284,6 +282,33 @@ func try_get_point_from_x_secp256k1{
     dw 24;  // y_try^2=should_be_rhs_or_grhs
     dw 24;
     dw 72;
+}
+
+func get_point_from_x_secp256k1{
+    range_check96_ptr: felt*,
+    add_mod_ptr: ModBuiltin*,
+    mul_mod_ptr: ModBuiltin*,
+    poseidon_ptr: PoseidonBuiltin*,
+}(x: felt, attempt: felt) -> (res: G1Point) {
+    alloc_locals;
+    %{ print(f"ATTEMPT: {ids.attempt}") %}
+    %{ print(f"RC_96_GET_POINT_FROM_X : {ids.range_check96_ptr}") %}
+
+    let (local res: G1Point*) = alloc();
+    let (x_384: UInt384) = felt_to_UInt384(x);
+
+    let (is_on_curve) = try_get_point_from_x_secp256k1(x=x_384, v=0, result=res);
+
+    if (is_on_curve != 0) {
+        return (res=[res]);
+    } else {
+        assert poseidon_ptr[0].input.s0 = x;
+        assert poseidon_ptr[0].input.s1 = attempt;
+        assert poseidon_ptr[0].input.s2 = 2;
+        let new_x = poseidon_ptr[0].output.s0;
+        tempvar poseidon_ptr = poseidon_ptr + PoseidonBuiltin.SIZE;
+        return get_point_from_x_secp256k1(x=new_x, attempt=attempt + 1);
+    }
 }
 
 namespace Signature {
@@ -465,9 +490,6 @@ namespace Signature {
             fill_elmt_at_index(Q_high[1], ids.range_check96_ptr, memory, 53, offset)
             fill_elmt_at_index(Q_high_shifted[0], ids.range_check96_ptr, memory, 54, offset)
             fill_elmt_at_index(Q_high_shifted[1], ids.range_check96_ptr, memory, 55, offset)
-
-
-            print(f"Hashing Z = Poseidon(Input, Commitments) = Hash(Points, scalars, Q_low, Q_high, Q_high_shifted, SumDlogDivLow, SumDlogDivHigh, SumDlogDivShifted)...")
         %}
 
         assert poseidon_ptr[0].input = PoseidonBuiltinState(s0='MSM_G1', s1=0, s2=1);
@@ -506,7 +528,17 @@ namespace Signature {
             cast(range_check96_ptr + 4 * N_LIMBS, felt*), 26
         );
         %{ print(f"CAIROX: {hex(ids._random_x_coord)}") %}
-        assert 1 = 1;
+
+        tempvar range_check96_ptr_init = range_check96_ptr;
+        tempvar range_check96_ptr_after_circuit = range_check96_ptr + 224 + (4 + 117 + 108 - 1) *
+            N_LIMBS;
+
+        let (random_point: G1Point) = get_point_from_x_secp256k1{
+            range_check96_ptr=range_check96_ptr_after_circuit
+        }(x=_random_x_coord, attempt=0);
+
+        tempvar range_check96_ptr_final = range_check96_ptr_after_circuit;
+        let range_check96_ptr = range_check96_ptr_init;
 
         let ecip_input: UInt384* = cast(range_check96_ptr, UInt384*);
         // Constants (0-3)
@@ -554,12 +586,8 @@ namespace Signature {
         //  let a0:G1Point = G1Point {x: u384{limb0:0x24bbb2e640ceea04c582be56, limb1:0x3194a04768eadeb55fc1ba0a, limb2:0x7b7954ea50caf5a, limb3:0x0}, y: u384{limb0:0x48afd5cdf3ea97eb92138b3c, limb1:0x796f538416c264e0d776e0d, limb2:0x6ef4f09165269157, limb3:0x0}};
         //  G1Point{x: u384{limb0:0x7fae4cd63658d585d7d8a264, limb1:0x721fe8c75e82c0be38844e0a, limb2:0x5891e91528037ca, limb3:0x0}, y: u384{limb0:0xa06fe9692227dfdc6dd6b4b5, limb1:0xc4330da0e6a11158bce59b92, limb2:0x524aade87df0f5d7, limb3:0x0}}
 
-        assert ecip_input[56] = UInt384(
-            0x7fae4cd63658d585d7d8a264, 0x721fe8c75e82c0be38844e0a, 0x5891e91528037ca, 0x0
-        );
-        assert ecip_input[57] = UInt384(
-            0xa06fe9692227dfdc6dd6b4b5, 0xc4330da0e6a11158bce59b92, 0x524aade87df0f5d7, 0x0
-        );
+        assert ecip_input[56] = random_point.x;
+        assert ecip_input[57] = random_point.y;
 
         // a_weirstrass
         assert ecip_input[58] = UInt384(secp256k1.A0, secp256k1.A1, secp256k1.A2, secp256k1.A3);
@@ -595,7 +623,7 @@ namespace Signature {
             )
         %}
 
-        tempvar range_check96_ptr = range_check96_ptr + 224 + (4 + 117 + 108 - 1) * N_LIMBS;
+        tempvar range_check96_ptr = range_check96_ptr_final;
         let add_mod_ptr = add_mod_ptr + 117 * ModBuiltin.SIZE;
         let mul_mod_ptr = mul_mod_ptr + 108 * ModBuiltin.SIZE;
         // Add Q_low and Q_high_shifted:
