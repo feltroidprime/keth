@@ -213,8 +213,8 @@ func try_get_point_from_x_secp256k1{
 
     let input: UInt384* = cast(range_check96_ptr, UInt384*);
 
-    assert input[0] = UInt384(1, 0, 0, 0);
-    assert input[1] = UInt384(0, 0, 0, 0);
+    assert input[0] = UInt384(1, 0, 0, 0);  // constant
+    assert input[1] = UInt384(0, 0, 0, 0);  // constant
     assert input[2] = x;
     assert input[3] = UInt384(secp256k1.A0, secp256k1.A1, secp256k1.A2, secp256k1.A3);
     assert input[4] = UInt384(secp256k1.B0, secp256k1.B1, secp256k1.B2, secp256k1.B3);
@@ -222,9 +222,9 @@ func try_get_point_from_x_secp256k1{
     assert input[6] = y_try;
 
     if (rhs_from_x_is_a_square_residue != 0) {
-        assert input[7] = UInt384(1, 0, 0, 0);
+        assert input[7] = UInt384(1, 0, 0, 0);  // True
     } else {
-        assert input[7] = UInt384(0, 0, 0, 0);
+        assert input[7] = UInt384(0, 0, 0, 0);  // False
     }
 
     run_modulo_circuit_basic(
@@ -244,16 +244,6 @@ func try_get_point_from_x_secp256k1{
         assert [result] = G1Point(x=UInt384(0, 0, 0, 0), y=UInt384(0, 0, 0, 0));
         return (is_on_curve=0);
     }
-
-    // constants_ptr_loc:
-    // dw 1;
-    // dw 0;
-    // dw 0;
-    // dw 0;
-    // dw 0;
-    // dw 0;
-    // dw 0;
-    // dw 0;
 
     add_offsets_ptr_loc:
     dw 40;  // (ax)+b
@@ -508,19 +498,24 @@ namespace Signature {
 
         tempvar rlc_coeff = poseidon_ptr[1].output.s1 + 0;
         let poseidon_ptr = poseidon_ptr + 2 * PoseidonBuiltin.SIZE;
-        assert 1 = 1;
-
         %{ print(f"CAIRORLC: {hex(ids.rlc_coeff)}") %}
         let (rlc_coeff_u384) = felt_to_UInt384(rlc_coeff);
 
+        // Hash sumdlogdiv 2 points : (4-29)
+        let (_random_x_coord, _, _) = hash_full_transcript_and_get_Z_3_LIMBS(
+            cast(range_check96_ptr + 4 * N_LIMBS, felt*), 26
+        );
+        %{ print(f"CAIROX: {hex(ids._random_x_coord)}") %}
+        assert 1 = 1;
+
         let ecip_input: UInt384* = cast(range_check96_ptr, UInt384*);
-        // Constants
+        // Constants (0-3)
         assert ecip_input[0] = UInt384(3, 0, 0, 0);
         assert ecip_input[1] = UInt384(0, 0, 0, 0);
         assert ecip_input[2] = UInt384(12528508628158887531275213211, 66632300, 0, 0);
         assert ecip_input[3] = UInt384(12528508628158887531275213211, 4361599596, 0, 0);
 
-        // RLCSumDlogDiv 2points :  n_coeffs = 18 + 4 * 2 = 26 (filled by prover)
+        // RLCSumDlogDiv for 2 points :  n_coeffs = 18 + 4 * 2 = 26 (filled by prover) (4-29)
 
         // Generator point
         assert ecip_input[30] = UInt384(
