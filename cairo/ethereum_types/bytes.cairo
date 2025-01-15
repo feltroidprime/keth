@@ -22,11 +22,16 @@
 // The data layout defined in this file are coherent with the Cairo arg generation process defined in args_gen.py and Cairo serialization process in serde.py
 
 from starkware.cairo.common.dict_access import DictAccess
+from starkware.cairo.common.math import assert_not_equal
 from starkware.cairo.common.uint256 import Uint256
-from ethereum_types.numeric import U128
+from src.utils.utils import Helpers
+from ethereum_types.numeric import U128, bool
 
 // Bytes types
 struct Bytes0 {
+    value: felt,
+}
+struct Bytes1 {
     value: felt,
 }
 struct Bytes8 {
@@ -75,20 +80,31 @@ struct TupleBytes {
 }
 
 // Important note about dictionary/mapping types:
-// Since keys are stored as pointers, accessing a dictionary with equivalent but distinct
+// When the key type are pointers, accessing a dictionary with equivalent but distinct
 // key objects may not work as expected. For example:
 //
 // If dict[b'123'] = b'345' is set, accessing with k = b'123' later may not find the value
 // since k points to a different memory location than the original key, even though the
 // content is identical.
 //
-// This could benefit from a redesign of the dictionary/mapping types to internally
+// To prevent this, we designed the dictionary/mapping types to internally
 // use the hash of the key instead of the key pointer.
+// As such, `args_gen` and `serde` automatically hash keys when generating arguments for complex types.
+// ([Bytes, bytes, bytearray, str, U256, Hash32, Bytes32, Bytes256]...)
 
-// Just a like regular DictAccess pointer, with keys and values to be interpreted as
+// Just a like regular DictAccess pointer, with keys hashed and values to be interpreted as
 // Bytes pointers.
+
+struct HashedBytes32 {
+    value: felt,
+}
+
+struct HashedBytes {
+    value: felt,
+}
+
 struct BytesBytesDictAccess {
-    key: Bytes,
+    key: HashedBytes,
     prev_value: Bytes,
     new_value: Bytes,
 }
@@ -96,6 +112,9 @@ struct BytesBytesDictAccess {
 struct MappingBytesBytesStruct {
     dict_ptr_start: BytesBytesDictAccess*,
     dict_ptr: BytesBytesDictAccess*,
+    // In case this is a copy of a previous dict,
+    // this field points to the address of the original mapping.
+    original_mapping: MappingBytesBytesStruct*,
 }
 
 struct MappingBytesBytes {
@@ -118,4 +137,10 @@ struct TupleBytes32Struct {
 
 struct TupleBytes32 {
     value: TupleBytes32Struct*,
+}
+
+struct Bytes1DictAccess {
+    key: felt,
+    prev_value: Bytes1,
+    new_value: Bytes1,
 }

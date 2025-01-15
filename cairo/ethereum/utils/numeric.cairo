@@ -1,15 +1,24 @@
 from starkware.cairo.common.math_cmp import is_le, is_not_zero
-from ethereum_types.numeric import Uint
+from starkware.cairo.common.uint256 import uint256_reverse_endian
+from ethereum_types.numeric import Uint, U256, U256Struct, bool
+from ethereum_types.bytes import Bytes32, Bytes32Struct
+from starkware.cairo.common.cairo_builtins import BitwiseBuiltin
 
 func min{range_check_ptr}(a: felt, b: felt) -> felt {
-    if (a == b) {
-        return a;
-    }
+    alloc_locals;
 
-    let res = is_le(a, b);
-    if (res == 1) {
-        return a;
-    }
+    tempvar is_min_b;
+    %{ memory[ap - 1] = 1 if ids.b <= ids.a else 0 %}
+    jmp min_is_b if is_min_b != 0;
+
+    min_is_a:
+    assert [range_check_ptr] = b - a;
+    let range_check_ptr = range_check_ptr + 1;
+    return a;
+
+    min_is_b:
+    assert [range_check_ptr] = a - b;
+    let range_check_ptr = range_check_ptr + 1;
     return b;
 }
 
@@ -106,4 +115,36 @@ func _taylor_exponential{range_check_ptr}(
     let i = i + 1;
 
     return _taylor_exponential(output, i, numerator_accumulated, numerator, denominator);
+}
+
+func U256_from_be_bytes{bitwise_ptr: BitwiseBuiltin*}(bytes: Bytes32) -> U256 {
+    // All bytes in the repository are expected to be in little endian so we need to reverse them
+    let (value) = uint256_reverse_endian([bytes.value]);
+    tempvar res = U256(new U256Struct(value.low, value.high));
+    return res;
+}
+
+func U256_from_le_bytes(bytes: Bytes32) -> U256 {
+    tempvar res = U256(bytes.value);
+    return res;
+}
+
+func U256_to_be_bytes{bitwise_ptr: BitwiseBuiltin*}(value: U256) -> Bytes32 {
+    let (reversed_value) = uint256_reverse_endian([value.value]);
+    tempvar res = Bytes32(new Bytes32Struct(reversed_value.low, reversed_value.high));
+    return res;
+}
+
+func U256_to_le_bytes(value: U256) -> Bytes32 {
+    tempvar res = Bytes32(value.value);
+    return res;
+}
+
+func U256__eq__(a: U256, b: U256) -> bool {
+    if (a.value.low == b.value.low and a.value.high == b.value.high) {
+        tempvar res = bool(1);
+        return res;
+    }
+    tempvar res = bool(0);
+    return res;
 }

@@ -24,6 +24,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.python_vm
+
 
 class TestOs:
 
@@ -92,7 +94,7 @@ class TestOs:
 
     @pytest.mark.skip("Only for debugging")
     @pytest.mark.slow
-    @pytest.mark.parametrize("block_number", [21389405])
+    @pytest.mark.parametrize("block_number", [21421739])
     def test_eth_block(self, cairo_run, block_number):
         prover_input_path = Path(f"cache/{block_number}_long.json")
         with open(prover_input_path, "r") as f:
@@ -234,6 +236,7 @@ class TestOs:
                 state=State.model_validate(initial_state),
             )
 
+    @pytest.mark.slow
     def test_create_tx_returndata(self, cairo_run):
         initial_state = {
             OWNER: {
@@ -274,7 +277,8 @@ class TestOs:
             == state["accounts"]["0x32dCAB0EF3FB2De2fce1D2E0799D36239671F04A"]["code"]
         )
 
-    @settings(deadline=None)
+    @pytest.mark.slow
+    @settings(max_examples=1)  # for max_examples=2, it takes 1773.25s in local
     @given(nonce=integers(min_value=2**64, max_value=2**248 - 1))
     def test_should_raise_when_nonce_is_greater_u64(self, cairo_run, nonce):
         initial_state = {

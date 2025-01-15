@@ -2,12 +2,14 @@ import random
 
 import pytest
 from Crypto.Hash import keccak
-from hypothesis import example, given
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 EXISTING_ACCOUNT = 0xABDE1
 EXISTING_ACCOUNT_SN_ADDR = 0x1234
 NON_EXISTING_ACCOUNT = 0xDEAD
+
+pytestmark = pytest.mark.python_vm
 
 
 @pytest.fixture(scope="module", params=[0, 32], ids=["no bytecode", "32 bytes"])
@@ -69,6 +71,8 @@ class TestEnvironmentalInformation:
                 == copied_bytecode
             )
 
+        @pytest.mark.slow
+        @settings(max_examples=20)  # for max_examples=2, it takes 45.71s in local
         @given(
             opcode_number=st.sampled_from([0x39, 0x37]),
             offset=st.integers(0, 2**128 - 1),

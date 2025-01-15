@@ -19,6 +19,7 @@ serialization function.
 """
 
 from collections import abc
+from dataclasses import is_dataclass
 from inspect import signature
 from itertools import accumulate
 from pathlib import Path
@@ -35,9 +36,19 @@ from typing import (
     get_origin,
 )
 
+from cairo_addons.vm import MemorySegmentManager as RustMemorySegmentManager
 from eth_utils.address import to_checksum_address
-from ethereum_types.bytes import Bytes, Bytes0, Bytes8, Bytes20, Bytes32, Bytes256
+from ethereum_types.bytes import (
+    Bytes,
+    Bytes0,
+    Bytes1,
+    Bytes8,
+    Bytes20,
+    Bytes32,
+    Bytes256,
+)
 from ethereum_types.numeric import U256
+from starkware.cairo.lang.cairo_constants import DEFAULT_PRIME
 from starkware.cairo.lang.compiler.ast.cairo_types import (
     CairoType,
     TypeFelt,
@@ -52,10 +63,14 @@ from starkware.cairo.lang.compiler.identifier_definition import (
 )
 from starkware.cairo.lang.compiler.identifier_manager import MissingIdentifierError
 from starkware.cairo.lang.compiler.scoped_name import ScopedName
+from starkware.cairo.lang.vm.crypto import poseidon_hash_many
+from starkware.cairo.lang.vm.memory_dict import UnknownMemoryError
 from starkware.cairo.lang.vm.memory_segments import MemorySegmentManager
 
+from ethereum.cancun.state import State
+from ethereum.cancun.vm.exceptions import InvalidOpcode
 from ethereum.crypto.hash import Hash32
-from tests.utils.args_gen import to_python_type
+from tests.utils.args_gen import Memory, Stack, to_python_type, vm_exception_classes
 
 # Sentinel object for indicating no error in exception handling
 NO_ERROR_FLAG = object()
@@ -83,10 +98,17 @@ def get_struct_definition(program, path: Tuple[str, ...]) -> StructDefinition:
 
 
 class Serde:
-    def __init__(self, segments: MemorySegmentManager, program, cairo_file=None):
+    def __init__(
+        self,
+        segments: Union[MemorySegmentManager, RustMemorySegmentManager],
+        program,
+        dict_manager,
+        cairo_file=None,
+    ):
         self.segments = segments
         self.memory = segments.memory
         self.program = program
+        self.dict_manager = dict_manager
         self.cairo_file = cairo_file or Path()
 
     @property
@@ -112,6 +134,13 @@ class Serde:
             output[name] = member_ptr
         return output
 
+    def is_pointer_wrapper(self, path: Tuple[str, ...]) -> bool:
+        """Returns whether the type is a wrapper to a pointer."""
+        members = get_struct_definition(self.program, path).members
+        if len(members) != 1:
+            return False
+        return isinstance(list(members.values())[0].cairo_type, TypePointer)
+
     def serialize_type(self, path: Tuple[str, ...], ptr) -> Any:
         """
         Recursively serialize a Cairo instance, returning the corresponding Python instance.
@@ -124,11 +153,14 @@ class Serde:
         if "__main__" in full_path:
             full_path = self.main_part + full_path[full_path.index("__main__") + 1 :]
         python_cls = to_python_type(full_path)
+        origin_cls = get_origin(python_cls)
+        annotations = []
 
         if get_origin(python_cls) is Annotated:
-            python_cls, _ = get_args(python_cls)
+            python_cls, *annotations = get_args(python_cls)
+            origin_cls = get_origin(python_cls)
 
-        if get_origin(python_cls) is Union:
+        if origin_cls is Union:
             value_ptr = self.serialize_pointers(path, ptr)["value"]
             if value_ptr is None:
                 return None
@@ -154,7 +186,7 @@ class Serde:
 
             return self._serialize(variant.cairo_type, value_ptr + variant.offset)
 
-        if get_origin(python_cls) is list:
+        if python_cls is Memory or origin_cls is Stack:
             mapping_struct_ptr = self.serialize_pointers(path, ptr)["value"]
             mapping_struct_path = (
                 get_struct_definition(self.program, path)
@@ -174,7 +206,7 @@ class Serde:
             pointers = self.serialize_pointers(mapping_struct_path, mapping_struct_ptr)
             segment_size = pointers["dict_ptr"] - pointers["dict_ptr_start"]
             dict_ptr = pointers["dict_ptr_start"]
-            list_len = pointers["len"]
+            data_len = pointers["len"]
 
             dict_repr = {
                 self._serialize(key_type, dict_ptr + i): self._serialize(
@@ -182,9 +214,16 @@ class Serde:
                 )
                 for i in range(0, segment_size, 3)
             }
-            return [dict_repr[i] for i in range(list_len)]
+            if python_cls is Memory:
+                # For bytearray, convert Bytes1 objects to integers
+                return Memory(
+                    int.from_bytes(dict_repr.get(i, b"\x00"), "little")
+                    for i in range(data_len)
+                )
 
-        if get_origin(python_cls) in (tuple, list, Sequence, abc.Sequence):
+            return [dict_repr[i] for i in range(data_len)]
+
+        if origin_cls in (tuple, list, Sequence, abc.Sequence):
             # Tuple and list are represented as structs with a pointer to the first element and the length.
             # The value field is a list of Relocatable (pointers to each element) or Felt (tuple of felts).
             # In usual cairo, a pointer to a struct, (e.g. Uint256*) is actually a pointer to one single
@@ -197,20 +236,30 @@ class Serde:
                 .cairo_type.pointee.scope.path
             )
             members = get_struct_definition(self.program, tuple_struct_path).members
-            if get_origin(python_cls) is tuple and Ellipsis not in get_args(python_cls):
+            if origin_cls is tuple and (
+                (Ellipsis not in get_args(python_cls))
+                or (Ellipsis in get_args(python_cls) and len(annotations) == 1)
+            ):
                 # These are regular tuples with a given size.
-                return tuple(
+                result = tuple(
                     self._serialize(member.cairo_type, tuple_struct_ptr + member.offset)
                     for member in members.values()
                 )
+                if (
+                    annotations
+                    and len(annotations) == 1
+                    and annotations[0] != len(result)
+                ):
+                    raise ValueError(
+                        f"Expected tuple of size {annotations[0]}, got {len(result)}"
+                    )
+                return result
             else:
                 # These are tuples with a variable size (or list or sequences).
                 raw = self.serialize_pointers(tuple_struct_path, tuple_struct_ptr)
                 tuple_item_path = members["data"].cairo_type.pointee.scope.path
                 resolved_cls = (
-                    get_origin(python_cls)
-                    if get_origin(python_cls) not in (Sequence, abc.Sequence)
-                    else list
+                    origin_cls if origin_cls not in (Sequence, abc.Sequence) else list
                 )
                 return resolved_cls(
                     [
@@ -219,39 +268,19 @@ class Serde:
                     ]
                 )
 
-        if get_origin(python_cls) in (Mapping, abc.Mapping, set):
+        if origin_cls in (Mapping, abc.Mapping, set):
             mapping_struct_ptr = self.serialize_pointers(path, ptr)["value"]
             mapping_struct_path = (
                 get_struct_definition(self.program, path)
                 .members["value"]
                 .cairo_type.pointee.scope.path
             )
-            dict_access_path = (
-                get_struct_definition(self.program, mapping_struct_path)
-                .members["dict_ptr"]
-                .cairo_type.pointee.scope.path
+
+            # Recursively serialize the mapping struct with support
+            # for copying from a previous mapping segment.
+            return self._serialize_mapping_struct(
+                mapping_struct_path, mapping_struct_ptr, origin_cls
             )
-            dict_access_types = get_struct_definition(
-                self.program, dict_access_path
-            ).members
-            key_type = dict_access_types["key"].cairo_type
-            value_type = dict_access_types["new_value"].cairo_type
-            pointers = self.serialize_pointers(mapping_struct_path, mapping_struct_ptr)
-            segment_size = pointers["dict_ptr"] - pointers["dict_ptr_start"]
-            dict_ptr = pointers["dict_ptr_start"]
-
-            if get_origin(python_cls) is set:
-                return {
-                    self._serialize(key_type, dict_ptr + i)
-                    for i in range(0, segment_size, 3)
-                }
-
-            return {
-                self._serialize(key_type, dict_ptr + i): self._serialize(
-                    value_type, dict_ptr + i + 2
-                )
-                for i in range(0, segment_size, 3)
-            }
 
         if python_cls in (bytes, bytearray, Bytes, str):
             tuple_struct_ptr = self.serialize_pointers(path, ptr)["value"]
@@ -263,16 +292,27 @@ class Serde:
                 return bytes(data).decode()
             return python_cls(data)
 
-        if python_cls and issubclass(python_cls, Exception):
-            tuple_struct_ptr = self.serialize_pointers(path, ptr)["value"]
-            if not tuple_struct_ptr:
+        if (
+            python_cls
+            and isinstance(python_cls, type)
+            and issubclass(python_cls, Exception)
+        ):
+            error_value = self.serialize_pointers(path, ptr)["value"]
+            if error_value == 0:
                 return NO_ERROR_FLAG
-            value_type = (
-                get_struct_definition(self.program, path).members["value"].cairo_type
+            # Get the first 30 bytes for the error message
+            error_bytes = (error_value & ((1 << (30 * 8)) - 1)).to_bytes(30, "big")
+            ascii_value = error_bytes.decode().strip("\x00")
+            actual_error_cls = next(
+                (cls for name, cls in vm_exception_classes if name == ascii_value), None
             )
-            error_bytes = self._serialize(value_type, tuple_struct_ptr)
-            error_message = error_bytes.decode() or ""
-            raise python_cls(error_message)
+            if actual_error_cls is None:
+                raise ValueError(f"Unknown error class: {ascii_value}")
+            if actual_error_cls is InvalidOpcode:
+                # Custom parameter (isolated case)
+                param_value = (error_value >> (30 * 8)) & 0xFF
+                return InvalidOpcode(param_value)
+            return actual_error_cls()
 
         if python_cls == Bytes256:
             base_ptr = self.memory.get(ptr)
@@ -304,7 +344,7 @@ class Serde:
                 return U256(value)
             return python_cls(value.to_bytes(32, "little"))
 
-        if python_cls in (Bytes0, Bytes8, Bytes20):
+        if python_cls in (Bytes0, Bytes1, Bytes8, Bytes20):
             return python_cls(value.to_bytes(python_cls.LENGTH, "little"))
 
         # Because some types are wrapped in a value field, e.g. Account{ value: AccountStruct }
@@ -314,6 +354,33 @@ class Serde:
             return python_cls(**kwargs)
         except TypeError:
             pass
+
+        if is_dataclass(get_origin(python_cls)) or is_dataclass(python_cls):
+            # Adjust int fields if they exceed 2**128 by subtracting DEFAULT_PRIME
+            # and filter out the NO_ERROR_FLAG, replacing it with None
+
+            if python_cls is State:
+                if (
+                    value["_storage_tries"] is not None
+                    and value["_storage_tries"] != {}
+                ):
+                    # First collect all keys with empty tries
+                    keys_to_delete = [
+                        k for k, v in value["_storage_tries"].items() if v._data == {}
+                    ]
+                    # Cannot iterate over a dict while deleting items from it
+                    for k in keys_to_delete:
+                        del value["_storage_tries"][k]
+
+            adjusted_value = {
+                k: (
+                    None
+                    if v is NO_ERROR_FLAG
+                    else (v - DEFAULT_PRIME if isinstance(v, int) and v > 2**128 else v)
+                )
+                for k, v in value.items()
+            }
+            return python_cls(**adjusted_value)
 
         if isinstance(value, dict):
             signature(python_cls.__init__).bind(None, **value)
@@ -354,7 +421,16 @@ class Serde:
             pointee = self.memory.get(ptr)
             # Edge case: 0 pointers are not pointer but no data
             if pointee == 0:
-                return None
+                if isinstance(cairo_type.pointee, TypeFelt):
+                    return None
+                # If the pointer is to an exception, return the error flag
+                python_cls = to_python_type(cairo_type.pointee.scope.path)
+                return (
+                    NO_ERROR_FLAG
+                    if isinstance(python_cls, type)
+                    and issubclass(python_cls, Exception)
+                    else None
+                )
             if isinstance(cairo_type.pointee, TypeFelt):
                 return self.serialize_list(pointee)
             serialized = self.serialize_list(
@@ -374,7 +450,145 @@ class Serde:
             return self.memory.get(ptr)
         if isinstance(cairo_type, TypeStruct):
             return self.serialize_scope(cairo_type.scope, ptr)
+        if isinstance(cairo_type, AliasDefinition):
+            return self.serialize_scope(cairo_type.destination, ptr)
         raise ValueError(f"Unknown type {cairo_type}")
+
+    def _serialize_mapping_struct(
+        self, mapping_struct_path, mapping_struct_ptr, origin_cls
+    ):
+        dict_access_path = (
+            get_struct_definition(self.program, mapping_struct_path)
+            .members["dict_ptr"]
+            .cairo_type.pointee.scope.path
+        )
+        dict_access_types = get_struct_definition(
+            self.program, dict_access_path
+        ).members
+
+        python_key_type = to_python_type(dict_access_types["key"].cairo_type)
+        # Some mappings have keys that are hashed. In that case, the cairo type name starts with "Hashed".
+        # but in reality, the key is a felt.
+        cairo_key_type = (
+            TypeFelt()
+            if dict_access_types["key"].cairo_type.scope.path[-1].startswith("Hashed")
+            else dict_access_types["key"].cairo_type
+        )
+
+        value_type = dict_access_types["new_value"].cairo_type
+        pointers = self.serialize_pointers(mapping_struct_path, mapping_struct_ptr)
+        segment_size = pointers["dict_ptr"] - pointers["dict_ptr_start"]
+        dict_ptr = pointers["dict_ptr_start"]
+
+        dict_segment_data = {
+            self._serialize(cairo_key_type, dict_ptr + i): self._serialize(
+                value_type, dict_ptr + i + 2
+            )
+            for i in range(0, segment_size, 3)
+        }
+
+        # In case this is a copy of a previous dict, we serialize the original dict.
+        # This is because the dict_tracker has the original values, but cairo memory
+        # does not: they're held in parent segments.
+        # If ptr=0 -> No parent.
+
+        # Note: only "real mappings" have this. Memory and Stack, which are dict-based, do not.
+        original_mapping_ptr = pointers.get("original_mapping")
+        serialized_original = (
+            self._serialize_mapping_struct(
+                mapping_struct_path, original_mapping_ptr, origin_cls
+            )
+            if original_mapping_ptr
+            else {}
+        )
+
+        serialized_dict = {}
+        tracker_data = self.dict_manager.trackers[dict_ptr.segment_index].data
+        if isinstance(cairo_key_type, TypeFelt):
+            for key, value in tracker_data.items():
+                # We skip serialization of null pointers, but serialize values equal to zero
+                if value == 0 and self.is_pointer_wrapper(value_type.scope.path):
+                    continue
+                # Reconstruct the original key from the preimage
+                if python_key_type in [
+                    Bytes32,
+                    Bytes256,
+                ]:
+                    hashed_key = poseidon_hash_many(key)
+                    preimage = b"".join(felt.to_bytes(16, "little") for felt in key)
+
+                    value = dict_segment_data.get(
+                        hashed_key, serialized_original.get(preimage)
+                    )
+
+                    # If `value` is None, it means the dict tracker has more
+                    # data than the corresponding `dict_segment`.
+                    # This can occur when serializing snapshots of dictionaries.
+                    if value is not None:
+                        serialized_dict[preimage] = value
+
+                elif python_key_type == U256:
+                    hashed_key = poseidon_hash_many(key)
+                    preimage = sum(felt * 2 ** (128 * i) for i, felt in enumerate(key))
+                    value = dict_segment_data.get(
+                        hashed_key, serialized_original.get(preimage)
+                    )
+                    if value is not None:
+                        serialized_dict[preimage] = value
+
+                elif python_key_type == Bytes:
+                    hashed_key = poseidon_hash_many(key)
+                    preimage = bytes(list(key))
+                    value = dict_segment_data.get(
+                        hashed_key, serialized_original.get(preimage)
+                    )
+                    if value is not None:
+                        serialized_dict[preimage] = value
+                else:
+                    raise ValueError(f"Unsupported key type: {python_key_type}")
+
+        elif get_origin(python_key_type) is tuple:
+            # If the key is a tuple, we're in the case of a Set[Tuple[Address, Bytes32]]]
+            # In that case, the keys are not hashed __yet__, the dict simply registers the
+            # Cases where they key is not hashed, and the key is a pointer.
+            # In that case, we can just return the dict as is.
+            # TODO: we need to hash the keys here.
+            serialized_dict = {**dict_segment_data, **serialized_original}
+        else:
+            # Even if the dict is not hashed, we need to use the tracker
+            # to differentiate between default-values _read_ and explicit writes.
+            # Only include keys that were explicitly written to the dict.
+            def key_transform(k):
+                if python_key_type is Bytes20:
+                    return k[0].to_bytes(20, "little")
+                else:
+                    try:
+                        return python_key_type(k[0])
+                    except Exception:
+                        # If the type is not indexable
+                        return python_key_type(k)
+
+            for cairo_key, cairo_value in tracker_data.items():
+                preimage = key_transform(cairo_key)
+
+                # For pointer types, a value of 0 means absent - should skip
+                is_null_pointer = cairo_value == 0 and self.is_pointer_wrapper(
+                    value_type.scope.path
+                )
+                if is_null_pointer:
+                    continue
+
+                value = dict_segment_data.get(
+                    preimage, serialized_original.get(preimage)
+                )
+
+                if value is not None:
+                    serialized_dict[preimage] = value
+
+        if origin_cls is set:
+            return set(serialized_dict.keys())
+
+        return serialized_dict
 
     def get_offset(self, cairo_type):
         if hasattr(cairo_type, "members"):
@@ -611,8 +825,11 @@ class Serde:
                 output.append(self._serialize(item_type, segment_ptr + i))
             # Because there is no way to know for sure the length of the list, we stop when we
             # encounter an error.
-            # trunk-ignore(ruff/E722)
-            except:
+            except UnknownMemoryError:
+                break
+            except Exception:
+                # TODO: handle this better as only UnknownMemoryError is expected
+                # when accessing invalid memory
                 break
         return output
 

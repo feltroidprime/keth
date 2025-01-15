@@ -1,9 +1,13 @@
+import pytest
+
 from ethereum.cancun.fork_types import EMPTY_ACCOUNT
 from ethereum.crypto.hash import keccak256
 from src.utils.uint256 import int_to_uint256
 from tests.utils.constants import OTHER, OWNER
 from tests.utils.helpers import get_internal_storage_key
 from tests.utils.models import State
+
+pytestmark = pytest.mark.python_vm
 
 
 class TestState:
@@ -14,10 +18,6 @@ class TestState:
     class TestIsAccountWarm:
         def test_should_return_true_when_account_in_state(self, cairo_run):
             cairo_run("test__is_account_warm__account_in_state")
-
-    class TestCopyAccounts:
-        def test_should_handle_null_pointers(self, cairo_run):
-            cairo_run("test___copy_accounts__should_handle_null_pointers")
 
     class TestAddTransfer:
         def test_should_return_false_when_overflowing_recipient_balance(

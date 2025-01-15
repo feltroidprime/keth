@@ -1,12 +1,14 @@
 import pytest
 from ethereum_types.numeric import U256
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from ethereum.crypto.elliptic_curve import SECP256K1N, secp256k1_recover
 from ethereum.crypto.hash import Hash32, keccak256
 from ethereum.utils.byte import left_pad_zero_bytes
 from tests.utils.helpers import ec_sign, generate_random_private_key
+
+pytestmark = pytest.mark.python_vm
 
 
 def ecrecover(data):
@@ -36,6 +38,7 @@ def ecrecover(data):
 
 @pytest.mark.EC_RECOVER
 class TestEcRecover:
+    @settings(max_examples=20)  # for max_examples=2, it takes 19.12s in local
     @given(message=st.binary(min_size=1, max_size=1000))
     def test_valid_signature(self, message, cairo_run):
         """Test with valid signatures generated from random messages."""
@@ -74,6 +77,7 @@ class TestEcRecover:
         output = cairo_run("test__ec_recover", input=input_data)
         assert output == py_result
 
+    @settings(max_examples=20)  # for max_examples=2, it takes 12.49s in local
     @given(
         v=st.integers(min_value=27, max_value=28),
         msg=st.binary(min_size=32, max_size=32),

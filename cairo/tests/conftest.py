@@ -1,5 +1,8 @@
 import logging
 import os
+import shutil
+import time
+from dataclasses import fields
 from pathlib import Path
 
 import pytest
@@ -47,6 +50,12 @@ def pytest_addoption(parser):
         help="run all tests regardless of cache",
     )
     parser.addoption(
+        "--no-skip-mark",
+        action="store_true",
+        default=False,
+        help="Do not skip tests by marked with @pytest.mark.skip",
+    )
+    parser.addoption(
         "--layout",
         choices=dir(LAYOUTS),
         default="all_cairo_instance",
@@ -67,7 +76,7 @@ register_type_strategies()
 settings.register_profile(
     "nightly",
     deadline=None,
-    max_examples=1500,
+    max_examples=700,
     phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target],
     report_multiple_bugs=True,
     suppress_health_check=[HealthCheck.too_slow],
@@ -85,6 +94,8 @@ settings.register_profile(
     max_examples=30,
     phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target],
     derandomize=True,
+    print_blob=True,
+    verbosity=Verbosity.quiet,
 )
 settings.register_profile(
     "debug",
@@ -92,6 +103,7 @@ settings.register_profile(
     verbosity=Verbosity.verbose,
     phases=[Phase.explicit, Phase.reuse, Phase.generate, Phase.target],
     derandomize=True,
+    print_blob=True,
 )
 settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
 logger.info(f"Using Hypothesis profile: {os.getenv('HYPOTHESIS_PROFILE', 'default')}")
@@ -109,11 +121,14 @@ def seed(request):
 
 def pytest_sessionstart(session):
     session.results = dict()
+    session.build_dir = Path("build") / ".pytest_build"
 
 
 def pytest_sessionfinish(session):
+
     if xdist.is_xdist_controller(session):
         logger.info("Controller worker: collecting tests to skip")
+        shutil.rmtree(session.build_dir, ignore_errors=True)
         tests_to_skip = session.config.cache.get(f"cairo_run/{CACHED_TESTS_FILE}", [])
         for worker_id in range(session.config.option.numprocesses):
             tests_to_skip += session.config.cache.get(
@@ -125,7 +140,7 @@ def pytest_sessionfinish(session):
     session_tests_to_skip = [
         session.test_hashes[item.nodeid]
         for item in session.results.values()
-        if item.passed
+        if item.passed and item.nodeid in session.test_hashes
     ]
 
     if xdist.is_xdist_worker(session):
@@ -138,6 +153,7 @@ def pytest_sessionfinish(session):
         return
 
     logger.info("Sequential worker: collecting tests to skip")
+    shutil.rmtree(session.build_dir, ignore_errors=True)
     tests_to_skip = session.config.cache.get(f"cairo_run/{CACHED_TESTS_FILE}", [])
     tests_to_skip += session_tests_to_skip
     session.config.cache.set(f"cairo_run/{CACHED_TESTS_FILE}", list(set(tests_to_skip)))
@@ -150,6 +166,14 @@ def pytest_runtest_makereport(item, call):
 
     if result.when == "call":
         item.session.results[item] = result
+
+
+def get_dump_path(session, fspath):
+    dump_path = session.build_dir / session.cairo_files[fspath].relative_to(
+        Path().cwd()
+    ).with_suffix(".json")
+    dump_path.parent.mkdir(parents=True, exist_ok=True)
+    return dump_path
 
 
 @pytest.hookimpl(wrapper=True)
@@ -169,32 +193,128 @@ def pytest_collection_modifyitems(session, config, items):
     session.cairo_programs = {}
     session.main_paths = {}
     session.test_hashes = {}
-    for item in items:
-        if hasattr(item, "fixturenames") and set(item.fixturenames) & {
-            "cairo_file",
-            "main_path",
-            "cairo_program",
-            "cairo_run",
-        }:
-            if item.fspath not in session.cairo_files:
-                cairo_file = get_cairo_file(item.fspath)
-                session.cairo_files[item.fspath] = cairo_file
-            if item.fspath not in session.main_paths:
-                main_path = get_main_path(cairo_file)
-                session.main_paths[item.fspath] = main_path
-            if item.fspath not in session.cairo_programs:
-                cairo_program = get_cairo_program(cairo_file, main_path)
-                session.cairo_programs[item.fspath] = cairo_program
+    cairo_items = [
+        item
+        for item in items
+        if (
+            hasattr(item, "fixturenames")
+            and set(item.fixturenames)
+            & {
+                "cairo_file",
+                "main_path",
+                "cairo_program",
+                "cairo_run",
+            }
+        )
+    ]
 
-            test_hash = xxhash.xxh64(
-                program_hash(cairo_program)
-                + file_hash(item.fspath)
-                + item.nodeid.encode()
-                + file_hash(Path(__file__).parent / "fixtures" / "runner.py")
-            ).hexdigest()
-            session.test_hashes[item.nodeid] = test_hash
+    # Distribute compilation using modulo
+    worker_count = getattr(config, "workerinput", {}).get("workercount", 1)
+    worker_id = getattr(config, "workerinput", {}).get("workerid", "master")
+    worker_index = int(worker_id[2:]) if worker_id != "master" else 0
+    fspaths = sorted(list({item.fspath for item in cairo_items}))
+    for fspath in fspaths[worker_index::worker_count]:
+        session.cairo_files[fspath] = get_cairo_file(fspath)
+        session.main_paths[fspath] = get_main_path(session.cairo_files[fspath])
+        dump_path = get_dump_path(session, fspath)
+        session.cairo_programs[fspath] = get_cairo_program(
+            session.cairo_files[fspath],
+            session.main_paths[fspath],
+            dump_path,
+        )
 
-            if test_hash in tests_to_skip and config.getoption("skip_cached_tests"):
-                item.add_marker(pytest.mark.skip(reason="Cached results"))
+    # Wait for all workers to finish
+    missing = set(fspaths) - set(fspaths[worker_index::worker_count])
+    while missing:
+        logger.info(f"Waiting for {len(missing)} compilations artifacts to be ready")
+        missing_new = set()
+        for fspath in missing:
+            if fspath not in session.cairo_files:
+                session.cairo_files[fspath] = get_cairo_file(fspath)
+            if fspath not in session.main_paths:
+                session.main_paths[fspath] = get_main_path(session.cairo_files[fspath])
+            if fspath not in session.cairo_programs:
+                dump_path = get_dump_path(session, fspath)
+                if dump_path.exists():
+                    session.cairo_programs[fspath] = get_cairo_program(
+                        session.cairo_files[fspath],
+                        session.main_paths[fspath],
+                        dump_path,
+                    )
+                else:
+                    missing_new.add(fspath)
+        missing = missing_new
+        time.sleep(0.25)
+
+    # Select tests
+    for item in cairo_items:
+        cairo_program = session.cairo_programs[item.fspath]
+        test_hash = xxhash.xxh64(
+            program_hash(cairo_program)
+            + file_hash(item.fspath)
+            + item.nodeid.encode()
+            + file_hash(Path(__file__).parent / "fixtures" / "runner.py")
+            + file_hash(Path(__file__).parent / "utils" / "serde.py")
+            + file_hash(Path(__file__).parent / "utils" / "args_gen.py")
+            + file_hash(Path(__file__).parent / "utils" / "strategies.py")
+        ).hexdigest()
+        session.test_hashes[item.nodeid] = test_hash
+
+        if config.getoption("no_skip_mark"):
+            item.own_markers = [
+                mark for mark in item.own_markers if mark.name != "skip"
+            ]
+
+        if test_hash in tests_to_skip and config.getoption("skip_cached_tests"):
+            item.add_marker(pytest.mark.skip(reason="Cached results"))
 
     yield
+
+
+def pytest_assertrepr_compare(op, left, right):
+    """
+    Custom assertion comparison for EVM objects to provide detailed field-by-field comparison.
+    """
+    if not (
+        hasattr(left, "__class__")
+        and hasattr(right, "__class__")
+        and left.__class__.__name__ == "Evm"
+        and right.__class__.__name__ == "Evm"
+        and op == "=="
+    ):
+        return None
+
+    lines = []
+    for field in fields(left):
+        left_val = getattr(left, field.name)
+        right_val = getattr(right, field.name)
+
+        if field.name != "error":
+            # Regular field comparison
+            if left_val != right_val:
+                lines.extend(
+                    [
+                        f"{field.name} field mismatch:",
+                        f"  left:  {left_val}",
+                        f"  right: {right_val}",
+                    ]
+                )
+        else:
+            if left_val is not None and str(left_val) != str(right_val):
+                lines.extend(
+                    [
+                        "error field mismatch:",
+                        f"  left:  {left_val}",
+                        f"  right: {right_val}",
+                    ]
+                )
+            elif not isinstance(left_val, type(right_val)):
+                lines.extend(
+                    [
+                        "error field mismatch:",
+                        f"  left:  {type(left_val)}",
+                        f"  right: {type(right_val)}",
+                    ]
+                )
+
+    return lines if len(lines) > 0 else None

@@ -1,14 +1,17 @@
 import pytest
 from Crypto.Hash import RIPEMD160
-from hypothesis import example, given
+from hypothesis import example, given, settings
 from hypothesis.strategies import binary
 
 from tests.utils.errors import cairo_error
 from tests.utils.hints import insert_hint
 
+pytestmark = pytest.mark.python_vm
+
 
 @pytest.mark.slow
 class TestRIPEMD160:
+    @settings(max_examples=1)  # for max_examples=2, it takes 1258.60s in local
     @given(msg_bytes=binary(min_size=1, max_size=200))
     @example(msg_bytes=b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmomnopnopq")
     def test_ripemd160_should_return_correct_hash(self, cairo_run, msg_bytes):

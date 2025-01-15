@@ -12,7 +12,15 @@ from ethereum_types.bytes import (
     MappingBytesBytes,
 )
 
-from ethereum.cancun.fork_types import Address, Root, VersionedHash, Bloom, Account
+from ethereum.cancun.fork_types import (
+    Address,
+    Root,
+    VersionedHash,
+    Bloom,
+    Account,
+    TupleVersionedHash,
+    ListHash32,
+)
 
 from ethereum.cancun.blocks import (
     Withdrawal,
@@ -35,5 +43,8 @@ from ethereum.cancun.transactions import (
 
 from ethereum.cancun.vm.gas import MessageCallGas
 
-from ethereum.cancun.trie import BranchNode, ExtensionNode, InternalNode, LeafNode, Node
+from ethereum.cancun.trie import BranchNode, ExtensionNode, InternalNode, LeafNode, Node, Subnodes
 from ethereum.exceptions import EthereumException
+from ethereum.cancun.vm.exceptions import ExceptionalHalt
+from ethereum.cancun.state import TransientStorage
+from ethereum.cancun.vm import Environment
