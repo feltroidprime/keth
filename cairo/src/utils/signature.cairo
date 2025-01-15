@@ -291,9 +291,6 @@ func get_point_from_x_secp256k1{
     poseidon_ptr: PoseidonBuiltin*,
 }(x: felt, attempt: felt) -> (res: G1Point) {
     alloc_locals;
-    %{ print(f"ATTEMPT: {ids.attempt}") %}
-    %{ print(f"RC_96_GET_POINT_FROM_X : {ids.range_check96_ptr}") %}
-
     let (local res: G1Point*) = alloc();
     let (x_384: UInt384) = felt_to_UInt384(x);
 
