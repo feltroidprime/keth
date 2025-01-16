@@ -94,13 +94,10 @@ func sign_to_UInt384_mod_secp256k1(sign: felt) -> (res: UInt384) {
     }
 }
 
-// Assume the input is valid UInt384 (will be the case if coming from ModuloBuiltin)
+// Takes a valid UInt384 value from ModuloBuiltin output, adds constraints to enforce it is canonically reduced mod p (ie: 0 <= a < p) and converts it to a Uint256.
+// Assumes 1 < p < 2^256 passed as valid Uint384.
 func uint384_to_uint256_mod_p{range_check_ptr}(a: UInt384, p: UInt384) -> (res: Uint256) {
-    // First force the prover to have filled a fully reduced field element < P.
-    assert a.d3 = 0;
-    assert [range_check_ptr] = p.d2 - a.d2;  // a.d2 <= p.d2
-    tempvar range_check_ptr = range_check_ptr + 1;
-
+    assert a.d3 = 0;  // From assumption : "p < 2^256", canonical reduction of a is only possible if a.d3 is 0.
     if (a.d2 == p.d2) {
         if (a.d1 == p.d1) {
             assert [range_check_ptr] = p.d0 - 1 - a.d0;
@@ -110,7 +107,8 @@ func uint384_to_uint256_mod_p{range_check_ptr}(a: UInt384, p: UInt384) -> (res: 
             tempvar range_check_ptr = range_check_ptr + 1;
         }
     } else {
-        tempvar range_check_ptr = range_check_ptr;
+        assert [range_check_ptr] = p.d2 - a.d2;  // a.d2 <= p.d2 && a.d2 != p.d2 => a.d2 < p.d2
+        tempvar range_check_ptr = range_check_ptr + 1;
     }
     // Then decompose and rebuild uint256
     let (d1_high_64, d1_low_32) = divmod(a.d1, 2 ** 32);
