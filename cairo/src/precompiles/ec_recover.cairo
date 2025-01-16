@@ -17,10 +17,10 @@ from starkware.cairo.common.cairo_secp.bigint import bigint_to_uint256, uint256_
 from starkware.cairo.common.memset import memset
 
 from src.errors import Errors
-from src.utils.uint256 import uint256_eq
+from src.utils.uint256 import uint256_eq, uint256_to_uint384
 from src.utils.utils import Helpers
 from src.utils.array import slice
-from src.utils.signature import Signature, uint256_to_uint384
+from src.utils.signature import Signature
 from src.utils.maths import unsigned_div_rem
 
 // @title EcRecover Precompile related functions.
@@ -67,7 +67,7 @@ namespace PrecompileEcRecover {
         }
 
         let msg_hash_uint256 = Helpers.bytes32_to_uint256(input_padded);
-        let (msg_hash_uint384) = uint256_to_uint384(msg_hash_uint256);
+        let msg_hash_uint384 = uint256_to_uint384(msg_hash_uint256);
         let r = Helpers.bytes_to_uint256(32, input_padded + 32 * 2);
         let s = Helpers.bytes_to_uint256(32, input_padded + 32 * 3);
 
@@ -88,8 +88,8 @@ namespace PrecompileEcRecover {
             return (0, output, GAS_COST_EC_RECOVER, 0);
         }
 
-        let (r_uint384) = uint256_to_uint384(r);
-        let (s_uint384) = uint256_to_uint384(s);
+        let r_uint384 = uint256_to_uint384(r);
+        let s_uint384 = uint256_to_uint384(s);
         let (success, recovered_address) = Signature.try_recover_eth_address(
             msg_hash_uint384, r_uint384, s_uint384, v - 27
         );

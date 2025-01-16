@@ -24,6 +24,7 @@ from src.utils.circuit_utils import (
     felt_to_UInt384,
     run_modulo_circuit_basic,
 )
+from src.utils.uint256 import uint256_to_uint384
 
 from src.utils.ecdsa_circuit import (
     get_full_ecip_2P_circuit,
@@ -66,10 +67,6 @@ namespace secp256k1 {
     const MIN_ONE_D3 = 0x0;
 }
 
-const POW_2_32 = 2 ** 32;
-const POW_2_64 = 2 ** 64;
-const POW_2_96 = 2 ** 96;
-
 @known_ap_change
 func get_generator_point() -> (point: G1Point) {
     // generator_point = (
@@ -95,13 +92,6 @@ func sign_to_UInt384_mod_secp256k1(sign: felt) -> (res: UInt384) {
     } else {
         return (res=UInt384(1, 0, 0, 0));
     }
-}
-
-// Input must be a valid Uint256.
-func uint256_to_uint384{range_check_ptr}(a: Uint256) -> (res: UInt384) {
-    let (high_64_high, high_64_low) = divmod(a.high, POW_2_64);
-    let (low_32_high, low_96_low) = divmod(a.low, POW_2_96);
-    return (res=UInt384(low_96_low, low_32_high + POW_2_32 * high_64_low, high_64_high, 0));
 }
 
 // Assume the input is valid UInt384 (will be the case if coming from ModuloBuiltin)
@@ -343,14 +333,14 @@ namespace Signature {
         poseidon_ptr: PoseidonBuiltin*,
     }(msg_hash: Uint256, r: Uint256, s: Uint256, y_parity: felt, eth_address: felt) {
         alloc_locals;
-        let (msg_hash_uint384: UInt384) = uint256_to_uint384(msg_hash);
+        let msg_hash_uint384: UInt384 = uint256_to_uint384(msg_hash);
         // Todo :fix with UInt384
         with_attr error_message("Signature out of range.") {
             validate_signature_entry(r);
             validate_signature_entry(s);
         }
-        let (r_uint384: UInt384) = uint256_to_uint384(r);
-        let (s_uint384: UInt384) = uint256_to_uint384(s);
+        let r_uint384: UInt384 = uint256_to_uint384(r);
+        let s_uint384: UInt384 = uint256_to_uint384(s);
 
         with_attr error_message("Invalid y_parity") {
             assert (1 - y_parity) * y_parity = 0;
